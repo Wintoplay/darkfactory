@@ -1,0 +1,19 @@
+Package: darkfactory
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: @MAINTAINER@
+Installed-Size: @INSTALLED@
+Section: devel
+Priority: optional
+Depends: git
+Recommends: xdg-utils
+Homepage: https://github.com/Wintoplay/darkfactory
+Description: local supervisor for coding agents in git worktrees
+ DarkFactory runs coding agents in git worktrees, one PTY session per agent,
+ and gives you a browser workspace to watch them: fleet, worktree, session
+ and runs. It is a single static binary with no runtime dependencies, no
+ telemetry and no auto-update.
+ .
+ Sessions live in a detached host, so they survive a daemon restart. Every
+ mutation is decided by a policy file and recorded in a hash-chained ledger
+ you can read with "darkfactory audit".

@@ -1,0 +1,2014 @@
+/* DarkFactory UI — plain CSS, no build step, no external assets. */
+
+:root {
+  color-scheme: dark;
+  --bg: #080a0d;
+  --panel: #0f1318;
+  --panel-2: #12171d;
+  --line: #232a33;
+  --line-2: #2e3742;
+  --text: #d8dee7;
+  --muted: #8b97a6;
+  --faint: #5c6773;
+  --green: #7ee787;
+  --green-dim: #1f3a28;
+  --amber: #f0b429;
+  --amber-dim: #3a2f14;
+  --red: #ff7b72;
+  --red-dim: #3d1d1c;
+  --blue: #79c0ff;
+  --blue-dim: #16324a;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Firefox for Android reports a bottom safe-area inset *and* excludes the
+     system bar from the viewport, so honouring it double-pads the nav and
+     leaves the labels floating above the edge. iOS is the case where the page
+     really does extend behind the bar. */
+  --safe-bottom: 0px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+/* app.js keeps --app-height in sync with visualViewport. On iPad the layout
+   viewport does not shrink when the keyboard opens; the visual viewport does,
+   so the shell must follow it or the composer stays behind the keyboard.
+   With no keyboard open the shell is pinned to the layout viewport instead
+   (bottom: 0), because a visual-viewport height can be a few pixels short of
+   the visible bottom and leaves a dead strip under the nav. */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+code, pre { font-family: var(--mono); }
+code { font-size: 0.92em; color: #c9d5e4; overflow-wrap: break-word; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 22px; }
+h2 { font-size: 17px; }
+p { margin: 8px 0; }
+a { color: var(--blue); }
+
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.spacer { flex: 1; }
+.eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- shell ---------- */
+
+.app {
+  position: fixed;
+  top: var(--app-top, 0px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+@supports (-webkit-touch-callout: none) {
+  :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
+}
+
+/* iOS Safari lays fixed elements against a layout viewport that extends behind
+   its bottom toolbar, so the visual viewport is the only correct height. On
+   Android the layout viewport is the visible area, and pinning to it is what
+   puts the bottom nav on the bottom edge. */
+@supports (-webkit-touch-callout: none) {
+  .app {
+    bottom: auto;
+    height: var(--app-height, 100dvh);
+  }
+}
+
+/* A soft keyboard shrinks only the visual viewport. */
+html[data-keyboard="1"] .app {
+  bottom: auto;
+  height: var(--app-height, 100dvh);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  background: #0c1015;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+.brand:hover .brand-name { color: var(--green); }
+.brand-name { font-size: 14px; }
+.mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: inline-block;
+  background: conic-gradient(from 210deg, var(--green), #2f6f45 45%, #10151b 46% 54%, var(--green) 55%);
+  box-shadow: inset 0 0 0 1px #2c3a31;
+}
+
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+button.pill { cursor: pointer; }
+button.pill:hover { border-color: #44505e; color: var(--text); }
+.pill.ok { color: var(--green); border-color: #2a4a33; background: var(--green-dim); }
+.pill.warn { color: var(--amber); border-color: #4a3d1c; background: var(--amber-dim); }
+.pill.danger { color: var(--red); border-color: #5a2a27; background: var(--red-dim); }
+.pill.info { color: var(--blue); border-color: #24425c; background: var(--blue-dim); }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  background: var(--faint);
+}
+.dot.run { background: var(--green); box-shadow: 0 0 0 3px rgba(126, 231, 135, 0.12); }
+.dot.block { background: var(--amber); box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.12); }
+.dot.idle { background: var(--faint); }
+
+/* State glyphs: a static running dot, a finished check, an attention mark, and
+   a bell for unread activity. The 12px box keeps tab/row geometry stable when
+   the glyph changes. A live PTY is not proof of work, so nothing spins here. */
+.agent-state {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  font: 700 10px/1 var(--sans);
+}
+.agent-state.live { width: 8px; height: 8px; margin: 2px; background: var(--green); box-shadow: 0 0 0 3px rgba(126, 231, 135, 0.12); }
+.agent-state.idle { width: 7px; height: 7px; margin: 2.5px; background: var(--faint); }
+.agent-state.done { color: var(--green); }
+.agent-state.attention { color: var(--amber); border: 1px solid var(--amber); font-size: 9px; }
+.agent-state.lost { color: var(--red); border: 1px solid var(--red); font-size: 9px; }
+.agent-state.unread { color: var(--amber); }
+
+/* The bell opens a list instead of jumping to the newest event: an OpenCode
+   permission has no PTY session to jump to, and a session can raise several
+   events. This panel is anchored to the bell and stays until the owner clears
+   it, so a decision is never lost by clicking the wrong row. */
+.attention-wrap { position: relative; display: inline-flex; }
+.attention-pop {
+  position: fixed;
+  left: 8px;
+  top: 56px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(390px, calc(100vw - 20px));
+  max-height: min(62vh, 480px);
+  padding: 6px;
+  background: #12171d;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.attention-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 7px;
+  border-bottom: 1px solid var(--line);
+}
+.attention-pop-head > span {
+  font: 600 10.5px/1 var(--sans);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.attention-clear { padding: 3px 8px; font-size: 11px; }
+.attention-head-actions { display: flex; align-items: center; gap: 4px; }
+.attention-settings { padding: 3px 8px; font-size: 11px; }
+.alerts-top { gap: 6px; }
+#form-alerts .check { margin: 8px 0; }
+.attention-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.attention-row { display: flex; align-items: stretch; }
+.attention-go {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.attention-go:hover, .attention-go:focus-visible { background: #1b232b; }
+.attention-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12.5px/1.3 var(--sans);
+}
+.attention-row-body {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  /* An agent's answer can be a paragraph; two lines keep rows comparable.
+     max-height is the fallback for an engine without line-clamp. */
+  max-height: 2.75em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.attention-row-source {
+  overflow: hidden;
+  color: var(--muted);
+  font: 11.5px/1.4 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attention-dismiss {
+  flex: none;
+  width: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  font: 15px/1 var(--sans);
+}
+.attention-dismiss:hover, .attention-dismiss:focus-visible { background: #1b232b; color: var(--text); }
+.attention-empty { padding: 12px 8px; color: var(--muted); font-size: 12px; }
+
+.term-activity { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
+/* The bell is always clickable: it opens the activity list even when nothing
+   is unread, so it never looks like dead chrome. Unread activity turns it amber
+   and adds the count. */
+.icon-btn.attention-btn { position: relative; color: var(--text); opacity: 0.82; }
+.icon-btn.attention-btn:hover { color: #ffd166; background: #1a222a; opacity: 1; }
+.icon-btn.attention-btn.has-unread { color: var(--amber); opacity: 1; }
+.attention-count {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--amber);
+  color: #1a1204;
+  font: 700 9px/13px var(--sans);
+  text-align: center;
+}
+.nav-badge {
+  display: inline-block;
+  min-width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--amber);
+  color: #1a1204;
+  font: 700 9px/14px var(--sans);
+  text-align: center;
+  vertical-align: 1px;
+}
+
+.btn {
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { border-color: #44505e; }
+.btn:disabled { opacity: 0.45; }
+.btn.primary { background: #1d3326; border-color: #2f5a3c; color: #b7f0c1; }
+.btn.danger { background: #351b1a; border-color: #5a2a27; color: #ffb3ae; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 2px 6px; }
+.btn.ghost:hover:not(:disabled) { color: var(--text); border-color: transparent; }
+.btn.wide { width: 100%; }
+
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+}
+.icon-btn:hover:not(:disabled) { background: #1a222a; color: var(--text); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* new menu */
+.menu { position: relative; }
+.menu summary { list-style: none; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu[open] summary { border-color: #44505e; }
+.menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 132px;
+  display: grid;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+.menu-pop button {
+  text-align: left;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.menu-pop button:hover { background: #1b232b; }
+
+.shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-2);
+  border-right: 1px solid var(--line);
+  padding: 10px;
+}
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+.side-foot {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding: 9px 4px 2px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.repo { padding: 6px 2px 4px; border-top: 1px solid var(--line); }
+.repo:first-child { border-top: 0; }
+.repo-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 5px;
+}
+.repo-name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The repo handle is always visible at low contrast: a fleet where every repo
+   has one workspace has no other draggable row, so a hover-only handle is a
+   hidden feature. */
+.repo-grip {
+  flex: none;
+  width: 18px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0.45;
+  touch-action: none;
+}
+.repo-head:hover .repo-grip,
+.repo-head:focus-within .repo-grip { opacity: 1; }
+.repo-grip:hover { color: var(--text); background: #171d24; }
+.repo-grip:focus-visible { opacity: 1; outline: 1px solid var(--blue); outline-offset: 1px; }
+@media (hover: none) { .repo-grip { opacity: 0.7; } }
+.repo.dragging { opacity: 0.45; }
+.repo.dragging .repo-grip { cursor: grabbing; }
+.repo.drop-before { box-shadow: inset 0 2px 0 var(--blue); }
+.repo.drop-after { box-shadow: inset 0 -2px 0 var(--blue); }
+.repo-head .icon-btn { margin-left: auto; width: 22px; height: 22px; font-size: 15px; }
+.repo-empty { padding: 2px 6px 4px; color: var(--faint); font-size: 11.5px; }
+.repo-new {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.repo-new:hover { color: var(--text); background: #171d24; }
+.wt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.wt-row { display: flex; align-items: stretch; gap: 1px; }
+/* Only the grip starts a reorder: the rest of the row must keep scrolling the
+   sidebar on a phone, so touch-action stays default everywhere else. */
+.wt-grip {
+  flex: none;
+  width: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0.45;
+  touch-action: none;
+}
+.wt-row:hover .wt-grip,
+.wt-row:focus-within .wt-grip { opacity: 1; }
+.wt-grip:hover { color: var(--text); background: #171d24; }
+.wt-grip:focus-visible { opacity: 1; outline: 1px solid var(--blue); outline-offset: 1px; }
+@media (hover: none) { .wt-grip { opacity: 0.7; } }
+.wt-item.dragging { opacity: 0.45; }
+.wt-item.dragging .wt-grip { cursor: grabbing; }
+.wt-item.drop-before { box-shadow: inset 0 2px 0 var(--blue); }
+.wt-item.drop-after { box-shadow: inset 0 -2px 0 var(--blue); }
+body.wt-dragging { user-select: none; }
+.wt-toggle {
+  flex: none;
+  width: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1;
+}
+.wt-toggle:hover:not(:disabled) { color: var(--text); background: #171d24; }
+.wt-toggle:disabled { opacity: 0; cursor: default; }
+.wt {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+}
+.wt:hover { background: #171d24; }
+.wt.on { background: #1a222a; border-color: #2a3540; }
+.wt-add {
+  flex: none;
+  width: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+}
+.wt-row:hover .wt-add,
+.wt-row:focus-within .wt-add { opacity: 1; }
+.wt-add:hover { color: var(--text); background: #171d24; }
+@media (hover: none) { .wt-add { opacity: 1; } }
+
+.tree-sessions { list-style: none; margin: 1px 0 3px 21px; padding: 0; display: grid; gap: 1px; }
+/* The session grip follows the same rule as the workspace grip: it is the only
+   drag handle, so a touch that starts on the row still scrolls the sidebar. */
+.session-grip {
+  flex: none;
+  width: 14px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0.4;
+  touch-action: none;
+}
+.tree-session:hover .session-grip,
+.tree-session:focus-within .session-grip { opacity: 1; }
+.session-grip:hover { color: var(--text); background: #171d24; }
+.session-grip:focus-visible { opacity: 1; outline: 1px solid var(--blue); outline-offset: 1px; }
+@media (hover: none) { .session-grip { opacity: 0.7; } }
+.tree-sessions li.dragging { opacity: 0.45; }
+.tree-sessions li.dragging .session-grip { cursor: grabbing; }
+.tree-sessions li.drop-before { box-shadow: inset 0 2px 0 var(--blue); }
+.tree-sessions li.drop-after { box-shadow: inset 0 -2px 0 var(--blue); }
+.tree-session-pin { flex: none; color: var(--amber); font-size: 10px; line-height: 1; }
+.tree-session { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
+.tree-session:hover { background: #171d24; }
+.tree-session.on { background: #1a222a; }
+.tree-session-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 3px 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+.tree-session-text { min-width: 0; display: grid; gap: 0; }
+.tree-session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.tree-session-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 10px;
+}
+.tree-session-x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+}
+.tree-session:hover .tree-session-x,
+.tree-session:focus-within .tree-session-x { opacity: 1; }
+.tree-session-x:hover { color: var(--red); background: var(--red-dim); }
+.tree-session-empty { margin-left: 21px; padding: 4px 6px; color: var(--faint); font-size: 11px; }
+@media (hover: none) { .tree-session-x { opacity: 1; } }
+.wt-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-empty { padding: 10px 6px; color: var(--faint); font-size: 12px; }
+
+.main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* Keep momentum scrolling inside the pane instead of chaining to the body.
+   This is the iPad fleet/list scroll path. */
+.main,
+.tree,
+.runs-list-card,
+.session-tabs,
+.debug-list {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.view { max-width: 1080px; margin: 0 auto; }
+
+/* The session view owns the remaining height and width instead of a fixed
+   terminal box. The terminal itself is full-bleed; only the chrome above it
+   keeps a gutter. */
+.app[data-view="session"] .main { overflow: hidden; display: flex; padding: 0; }
+.app[data-view="session"] #view-session {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+}
+.app[data-view="session"] .view-head {
+  padding: 14px 16px 0;
+  margin-bottom: 10px;
+}
+.app[data-view="session"] .session-tabs { padding: 0 16px 8px; }
+.app[data-view="session"] .terminal {
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+#view-session .terminal { flex: 1; min-height: 0; }
+.view-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.view-title { min-width: 0; }
+.view-title h1 { margin-top: 2px; overflow-wrap: anywhere; }
+.view-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 13px;
+  background: var(--panel-2);
+  display: grid;
+  gap: 9px;
+  align-content: start;
+  min-width: 0;
+}
+.card-head { display: flex; align-items: center; gap: 8px; }
+.card p { margin: 0; font-size: 12.5px; }
+
+.kv {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+  align-items: baseline;
+}
+.kv > span {
+  color: var(--faint);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.rows li { min-width: 0; }
+.row-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f1419;
+  text-align: left;
+}
+.row-btn:hover { border-color: var(--line-2); background: #141a21; }
+.row-btn .row-main { min-width: 0; display: grid; gap: 1px; }
+.row-btn .row-title {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-btn .row-meta {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-btn .row-side { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
+.rows-empty { color: var(--faint); font-size: 12px; padding: 6px 2px; }
+
+/* runs */
+.runs-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.4fr);
+  gap: 14px;
+  align-items: start;
+}
+.runs-list-card { max-height: 70vh; overflow: auto; }
+.run-row.on { border-color: #2f6f45; background: #101a14; }
+.run-detail-card { min-height: 240px; }
+.run-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.run-times { margin: 0; font-size: 11.5px; }
+.run-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.run-error { margin: 0; color: var(--red); font-size: 12px; overflow-wrap: anywhere; }
+.run-steps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 7px; }
+.run-step {
+  display: grid;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f1419;
+}
+.run-step-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.run-step-ordinal { color: var(--faint); font-family: var(--mono); font-size: 11px; }
+.run-step-name { font-size: 12.5px; overflow-wrap: anywhere; }
+.run-step-spec { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.run-output {
+  margin: 2px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #090c0f;
+  color: #c3cedb;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.wide-dialog { width: min(640px, calc(100vw - 28px)); }
+.wide-dialog textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: #0b0f14;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.wide-dialog textarea:focus { border-color: #2f5a3c; outline: 0; box-shadow: 0 0 0 2px rgba(126, 231, 135, 0.08); }
+
+/* session tabs */
+.session-tabs {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 0 0 8px;
+  scrollbar-width: thin;
+}
+.session-tab {
+  display: flex;
+  align-items: center;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0d1116;
+}
+.session-tab.on { border-color: #2f6f45; background: #101a14; }
+.session-tab-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.session-tab.on .session-tab-main { color: var(--text); }
+.session-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-tab-close {
+  align-self: stretch;
+  padding: 0 8px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--faint);
+  font-size: 14px;
+  line-height: 1;
+}
+.session-tab-close:hover { color: var(--red); background: var(--red-dim); }
+.session-tab-add {
+  /* The tab strip scrolls. On a phone with several sessions the add control
+     used to sit past the last tab, so the one visible "+" was the one the TUI
+     draws inside the terminal. Pin it to the right edge of the strip. */
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--bg);
+  flex: none;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.session-tab-add:hover { color: var(--text); border-color: var(--muted); }
+
+/* terminal */
+.terminal-blocked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #0b0f13;
+}
+.terminal-blocked p {
+  margin: 0;
+}
+.terminal-blocked .btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.terminal {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #090c0f;
+}
+.term-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #0d1116;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.term-head .muted {
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-tools { display: flex; align-items: center; gap: 4px; flex: none; }
+.term-btn {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #10161c;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.term-btn:hover { border-color: var(--line-2); color: var(--text); }
+/* A live phone session hides .view-head, which is where #btn-sess-chat lives.
+   This is the same action in the terminal header, so the chat panel stays
+   reachable without giving the title row its height back. */
+#btn-term-chat { display: none; }
+@media (max-width: 900px), (any-pointer: coarse) {
+  #btn-term-chat:not([hidden]) { display: inline-block; }
+}
+#terminal {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #090c0f;
+  outline: none;
+  /* xterm.js 6.0.0 has a touch-scroll regression; app.js translates a vertical
+     pan into a synthetic wheel event, so the browser must not pan this node. */
+  touch-action: none;
+}
+#terminal .xterm {
+  height: 100%;
+  padding: 6px 8px;
+  touch-action: none;
+}
+#terminal .xterm-viewport {
+  background: transparent !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+/* A full-screen TUI owns its scrollback; the touch handler sends PageUp/PageDown
+   instead of letting the empty xterm viewport rubber-band. */
+.app[data-term="tui"] #terminal,
+.app[data-term="tui"] #terminal .xterm,
+.app[data-term="tui"] #terminal .xterm-viewport {
+  touch-action: none;
+}
+
+/* Touch keyboards have no Escape, Tab or Ctrl, and xterm's hidden textarea is
+   not a chat box. This row is the line-oriented input path for a coding agent:
+   a plain textarea, so iOS owns the keyboard, anchored to the bottom of the
+   shell so it rides above the keyboard. Desktop hides it and the grid keeps the
+   keyboard; a full-screen TUI hides it too, because it would only eat rows. */
+.term-compose { display: none; }
+
+/* OpenCode chat: a native message list, not a terminal. The panel owns the
+   remaining height; only .oc-messages scrolls, so iPad momentum stays local. */
+.oc-session-select { display: none; }
+.oc-search {
+  width: 150px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #090c0f;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.oc-search:focus { border-color: #2f5a3c; outline: 0; }
+.oc-older {
+  align-self: center;
+  margin: 8px 14px 0;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #0d1116;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.oc-older:hover { color: var(--text); border-color: #2f5a3c; }
+.oc-permissions {
+  display: grid;
+  gap: 7px;
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #5a3a16;
+  background: #1a130a;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.oc-permission {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #6b4a1c;
+  border-radius: 8px;
+  background: #21180c;
+}
+.oc-permission-head { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.oc-permission-title {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.oc-permission-action { font-family: var(--mono); font-size: 12px; color: var(--text); }
+.oc-permission-source { color: var(--faint); font-size: 10px; }
+.oc-permission-message { margin: 0; color: var(--text); font-size: 12.5px; overflow-wrap: anywhere; }
+.oc-permission-resources {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.oc-permission-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.oc-permission-actions .btn { padding: 4px 8px; font-size: 11.5px; }
+.devices-list { display: grid; gap: 8px; margin: 10px 0; max-height: 48vh; overflow-y: auto; }
+.device-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1116;
+}
+.device-info { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.device-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.device-meta { color: var(--muted); font-size: 10.5px; }
+.device-row .btn { flex: none; padding: 4px 8px; font-size: 11.5px; }
+.app[data-view="opencode"] .main { overflow: hidden; display: flex; padding: 0; }
+.app[data-view="opencode"] #view-opencode {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: 0;
+}
+.app[data-view="opencode"] .view-head {
+  padding: 14px 16px 0;
+  margin-bottom: 10px;
+}
+.oc-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.65fr) minmax(0, 1.55fr);
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+.oc-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: #0b0f14;
+}
+.oc-list-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.oc-sessions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.oc-session {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.oc-session:hover { background: #111820; border-color: var(--line); }
+.oc-session.on { background: #101a14; border-color: #2f6f45; }
+.oc-session-title {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-session-meta {
+  color: var(--muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #090c0f;
+}
+.oc-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #0d1116;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.oc-chat-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.oc-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.oc-empty {
+  margin: auto;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  max-width: 380px;
+}
+.oc-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 88%;
+  min-width: 0;
+}
+.oc-msg.user { align-self: flex-end; }
+.oc-msg.assistant { align-self: flex-start; }
+.oc-msg.system, .oc-msg.synthetic { align-self: center; max-width: 100%; }
+.oc-bubble {
+  display: grid;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #10161c;
+  min-width: 0;
+}
+.oc-msg.user .oc-bubble { background: #14211a; border-color: #2a4a33; }
+.oc-msg.system .oc-bubble, .oc-msg.synthetic .oc-bubble {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+.oc-role {
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.oc-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.oc-code {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #080b0e;
+  color: #c8d6e5;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+.oc-reasoning, .oc-tool {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0c1116;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.oc-reasoning summary, .oc-tool summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+.oc-tool summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.oc-tool-name { color: var(--text); font-family: var(--mono); font-size: 11px; }
+.oc-tool-status {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.oc-tool-status.completed { color: var(--green); }
+.oc-tool-status.error { color: var(--red); }
+.oc-tool-status.running, .oc-tool-status.streaming { color: var(--amber); }
+.oc-tool pre, .oc-reasoning pre { margin: 7px 0 0; }
+.oc-idle {
+  align-self: center;
+  color: var(--faint);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.oc-error { color: var(--red); font-size: 12px; overflow-wrap: anywhere; }
+.oc-compose {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  background: #0d1116;
+}
+.oc-compose textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  max-height: 160px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #090c0f;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+}
+.oc-compose textarea:focus { border-color: #2f5a3c; outline: 0; box-shadow: 0 0 0 2px rgba(126, 231, 135, 0.08); }
+
+/* empty / landing */
+.empty {
+  min-height: calc(100dvh - 250px);
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+}
+.empty-mark {
+  width: 54px;
+  height: 54px;
+  border-radius: 13px;
+  background: conic-gradient(from 210deg, var(--green), #2f6f45 45%, #10151b 46% 54%, var(--green) 55%);
+  box-shadow: inset 0 0 0 1px #2c3a31, 0 10px 30px rgba(0, 0, 0, 0.4);
+  margin-bottom: 4px;
+}
+.empty h1 { font-size: 24px; }
+.empty p { max-width: 470px; font-size: 13px; }
+
+/* status bar + mobile nav */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--line);
+  background: #0b0e12;
+  color: var(--muted);
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+.mobile-nav { display: none; }
+
+/* ---------- connect ---------- */
+
+.connect {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow: auto;
+  background:
+    radial-gradient(900px 500px at 50% -10%, rgba(126, 231, 135, 0.07), transparent 70%),
+    var(--bg);
+}
+.connect-card {
+  width: min(430px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+.connect-card .brand { cursor: default; }
+.connect-card .brand:hover .brand-name { color: var(--text); }
+.connect-card h1 { font-size: 20px; margin-top: 2px; }
+.connect-card p { margin: 0; font-size: 12.5px; }
+.connect-card .hint { font-size: 11.5px; line-height: 1.55; }
+.connect-error { min-height: 17px; color: var(--red); font-size: 12px; }
+.connect-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 11px;
+}
+.connect-or::before,
+.connect-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.pair-qr-wrap { display: flex; justify-content: center; }
+.pair-qr {
+  display: grid;
+  grid-template-columns: repeat(var(--qr-modules, 29), 1fr);
+  grid-auto-rows: 1fr;
+  width: 210px;
+  height: 210px;
+  padding: 20px;
+  border-radius: 9px;
+  background: #f2f5f8;
+}
+.pair-qr i { display: block; background: transparent; }
+.pair-qr i.on { background: #0b0f14; }
+
+.pair-code-row { display: flex; align-items: center; gap: 8px; }
+.pair-code {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: #0b0f14;
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 24px;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+.copy-helper {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.field { display: grid; gap: 6px; }
+.field > span { color: var(--muted); font-size: 12px; }
+.field input,
+.field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: #0b0f14;
+  color: var(--text);
+  outline: 0;
+  font-size: 13px;
+}
+.field input:focus,
+.field select:focus { border-color: #2f5a3c; box-shadow: 0 0 0 2px rgba(126, 231, 135, 0.08); }
+.field input::placeholder { color: #56616d; }
+#sess-new-fields { display: grid; gap: 12px; }
+#sess-new-fields[hidden],
+#sess-repo-field[hidden],
+#sess-where-field[hidden] { display: none; }
+.dialog .hint { margin: 0; font-size: 11.5px; line-height: 1.55; }
+
+/* add-repo directory picker */
+.path-row { display: flex; align-items: center; gap: 6px; }
+.path-row input { flex: 1; min-width: 0; }
+.browser {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0b0f14;
+}
+.browser-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.browser-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: #b9c6d5;
+}
+.browser-list {
+  display: grid;
+  gap: 2px;
+  max-height: 230px;
+  overflow: auto;
+  align-content: start;
+}
+.dir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12.5px;
+}
+.dir-row:hover { background: #151b22; border-color: var(--line); }
+.dir-mark, .dir-arrow { color: var(--faint); font-size: 11px; flex: none; }
+.dir-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+.dir-row .pill { flex: none; }
+.browser-empty { padding: 10px 8px; color: var(--faint); font-size: 12px; }
+.browser-foot {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px 8px;
+}
+.browser-note { grid-column: 1 / -1; min-width: 0; color: var(--muted); font-size: 11.5px; }
+.browser-note.bad { color: var(--amber); }
+.browser-note.ok { color: var(--green); }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+  user-select: none;
+}
+.check input { accent-color: var(--green); }
+
+.banner {
+  position: relative;
+  z-index: 500;
+  flex: none;
+  padding: 8px 14px;
+  background: var(--amber-dim);
+  border-bottom: 1px solid #4a3d1c;
+  color: #f5cd6b;
+  font-size: 12px;
+  text-align: center;
+}
+.banner code { color: #f8d98a; }
+
+/* ---------- context menu ---------- */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 190px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: #12171d;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+}
+.ctx-item:hover,
+.ctx-item:focus-visible { background: #1a222a; outline: 0; }
+.ctx-item.danger { color: var(--red); }
+.ctx-item.danger:hover { background: var(--red-dim); }
+.ctx-item:disabled { color: var(--faint); cursor: not-allowed; }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* ---------- dialogs + toast ---------- */
+
+.dialog {
+  width: min(440px, calc(100vw - 28px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.62); }
+/* The folder picker grows downward from a fixed top edge. Centering a dialog
+   whose height changes makes the Browse button jump away from the pointer. */
+#dlg-repo {
+  top: max(12px, 4vh);
+  bottom: auto;
+  margin-block: 0;
+}
+.dialog form { display: grid; gap: 12px; margin: 0; }
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.dialog-head h2 { font-size: 16px; }
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  z-index: 200;
+  transform: translateX(-50%) translateY(10px);
+  max-width: min(90vw, 520px);
+  padding: 9px 14px;
+  border: 1px solid #33404d;
+  border-radius: 9px;
+  background: #1a222a;
+  color: var(--text);
+  font-size: 12.5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.bad { border-color: #5a2a27; background: #2a1615; color: #ffb3ae; }
+
+/* ---------- debug log ---------- */
+
+.debug {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - 24px));
+  max-height: 46dvh;
+  border: 1px solid #33404d;
+  border-radius: 10px;
+  background: rgba(9, 13, 17, 0.97);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.debug-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.debug-head code { color: var(--faint); }
+.debug-head .btn { padding: 3px 7px; font-size: 11px; }
+.debug-head .btn:first-of-type { margin-left: auto; }
+.debug-list {
+  margin: 0;
+  padding: 6px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  list-style: none;
+}
+.debug-line { padding: 1px 0; color: #b9c6d5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.debug-line.api { color: #8fd3ff; }
+.debug-line.dialog, .debug-line.dom { color: #f5cd6b; }
+.debug-line.click { color: #9be29b; }
+.debug-line.error { color: #ff9b9b; }
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 900px), (any-pointer: coarse) {
+  /* iOS Safari zooms the page when a focused input is under 16px, and that
+     zoom is hard to undo with touch. Keep form controls at 16px on tablets. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea { font-size: 16px; }
+  button,
+  .btn,
+  .nav-btn,
+  .oc-session,
+  .tree-session { touch-action: manipulation; }
+
+  .app { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+  .topbar {
+    padding: 10px 12px;
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .runs-top { display: none; }
+  .devices-top { display: none; }
+  .alerts-top .alerts-label { display: none; }
+
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    display: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  .app[data-mobile="fleet"] .sidebar { display: flex; }
+  .app[data-mobile="fleet"] .main { display: none; }
+  /* The footer hint is a desktop note; on a phone it is just a line of grey
+     text above the nav, so it costs height and says nothing. */
+  .side-foot { display: none; }
+
+  .main { padding: 12px; }
+  .view-head { flex-direction: column; gap: 10px; }
+  .view-actions { margin-left: 0; width: 100%; }
+  .view-actions .btn { flex: 1; }
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .runs-layout { grid-template-columns: minmax(0, 1fr); }
+  .runs-list-card { max-height: 38vh; }
+
+  .app[data-view="session"] .main { padding: 0; }
+  .app[data-view="session"] .view-head {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px 0;
+    margin-bottom: 6px;
+  }
+  .app[data-view="session"] .view-title h1 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app[data-view="session"] .view-title .eyebrow,
+  .app[data-view="session"] .chips { display: none; }
+  .app[data-view="session"] .view-actions { width: auto; margin-left: auto; }
+  .app[data-view="session"] .view-actions .btn {
+    flex: none;
+    padding: 5px 8px;
+    font-size: 11.5px;
+  }
+  .app[data-view="session"] .session-tabs { padding: 0 10px 6px; }
+  /* A live session on a phone: drop the title row, keep the tabs. */
+  .app[data-view="session"][data-live="1"] .view-head { display: none; }
+  .app[data-view="session"][data-live="1"] .session-tabs { padding-top: 6px; }
+  .term-head { padding: 6px 8px; gap: 6px; }
+  .term-head .muted { display: none; }
+  .term-tools { gap: 3px; }
+  .term-btn { padding: 2px 5px; }
+  #terminal .xterm { padding: 4px 6px; }
+  .term-compose {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--line);
+    background: #0d1116;
+  }
+  .app[data-term="tui"] .term-compose { display: none; }
+  .term-compose textarea {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    max-height: 38px;
+    overflow-y: auto;
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #090c0f;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    resize: none;
+  }
+  .term-compose textarea:focus { border-color: #2f5a3c; outline: 0; }
+  .term-keys { display: flex; gap: 4px; flex: none; }
+  .term-keys .term-btn { padding: 6px; }
+  .empty { min-height: calc(100dvh - 280px); }
+  .empty h1 { font-size: 21px; }
+
+  .app[data-view="opencode"] .main { padding: 0; }
+  .app[data-view="opencode"] .view-head {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px 0;
+    margin-bottom: 6px;
+  }
+  .app[data-view="opencode"] .view-title { flex: 1 1 120px; }
+  .app[data-view="opencode"] .view-title h1 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app[data-view="opencode"] .view-title .eyebrow,
+  .app[data-view="opencode"] .chips { display: none; }
+  .app[data-view="opencode"] .view-actions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .app[data-view="opencode"] .view-actions .btn {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    font-size: 11.5px;
+  }
+  .oc-session-select {
+    display: block;
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #0d1116;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+  }
+  .oc-search { width: 100%; flex: 1 1 100%; padding: 7px 8px; font-size: 16px; }
+  .oc-layout { grid-template-columns: minmax(0, 1fr); border-top: 0; }
+  .oc-list { display: none; }
+  .oc-chat { border-top: 1px solid var(--line); }
+  .oc-chat-head { padding: 6px 9px; }
+  .oc-permissions { padding: 7px 9px; max-height: 42vh; }
+  .oc-older { margin: 6px 10px 0; }
+  .oc-messages { padding: 10px; gap: 8px; }
+  .oc-msg { max-width: 94%; }
+  .oc-compose { padding: 8px 9px; }
+  .oc-compose textarea { min-height: 38px; font-size: 16px; }
+
+  .mobile-nav {
+    display: flex;
+    border-top: 1px solid var(--line);
+    background: #0b0e12;
+    padding-bottom: var(--safe-bottom);
+  }
+  .nav-btn {
+    flex: 1;
+    padding: 11px 6px;
+    border: 0;
+    border-top: 2px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .nav-btn.on { color: var(--green); border-top-color: var(--green); background: #0f1419; }
+
+  /* The nav is the bottom edge on a phone. The statusbar used to sit below it,
+     which put the section row one row off the bottom and spent ~24 px on
+     counts, a containment note and the version. The version stays in the debug
+     panel, the counts are the tree, and containment is a desktop note. */
+  .statusbar { display: none; }
+  .pair-top { display: none; }
+  .pair-qr { width: 190px; height: 190px; padding: 18px; }
+  .pair-code { font-size: 20px; }
+  .toast { bottom: calc(52px + var(--safe-bottom)); }
+
+  .dialog { padding: 16px; }
+  .browser-list { max-height: 180px; }
+  .debug { right: 8px; bottom: calc(52px + var(--safe-bottom)); width: calc(100vw - 16px); max-height: 38dvh; }
+}
+
+@media (max-width: 420px) {
+  .topbar .brand-name { display: none; }
+}
+
+/* Focus mode keeps normal flow; it hides chrome instead of pinning a fixed pane. */
+.app[data-zen="1"] { grid-template-rows: minmax(0, 1fr); }
+.app[data-zen="1"] .topbar,
+.app[data-zen="1"] .statusbar,
+.app[data-zen="1"] .mobile-nav,
+.app[data-zen="1"] .sidebar,
+.app[data-zen="1"] .view-head,
+.app[data-zen="1"] .session-tabs { display: none; }
+.app[data-zen="1"] .shell { grid-template-columns: minmax(0, 1fr); }
+.app[data-zen="1"] .main { padding: 0; overflow: hidden; display: flex; }
+.app[data-zen="1"] #view-session { max-width: none; margin: 0; }
+.app[data-zen="1"] .terminal { border: 0; border-radius: 0; }
+
+/* Chat mode is the same OpenCode panel with the fleet chrome hidden. It is a
+   layout mode, opt-in per tab and never the default, so the panel layout and the
+   chat layout can be compared side by side. The terminal keeps its own Focus
+   mode (data-zen); neither mode applies to the other's view. */
+.app[data-chat="1"] { grid-template-rows: minmax(0, 1fr); }
+.app[data-chat="1"] .topbar,
+.app[data-chat="1"] .statusbar,
+.app[data-chat="1"] .mobile-nav,
+.app[data-chat="1"] .sidebar,
+.app[data-chat="1"] .view-title { display: none; }
+.app[data-chat="1"] .shell { grid-template-columns: minmax(0, 1fr); }
+.app[data-chat="1"] .view-head { padding: 8px 10px 0; margin-bottom: 6px; }
+/* The topbar was the element carrying the top inset, so the chat header has to
+   take it or the notch sits on the chat-switcher row. */
+.app[data-chat="1"] .view-head { padding-top: max(8px, env(safe-area-inset-top)); }
+.app[data-chat="1"] .oc-compose { padding-bottom: calc(10px + var(--safe-bottom)); }
+
+@media (max-width: 900px), (any-pointer: coarse) {
+  /* On a phone the search field costs a whole row in chat mode. The native
+     picker still switches chats and New chat stays beside it, so the row keeps
+     both actions and the conversation keeps the height. */
+  .app[data-chat="1"] .oc-search,
+  .app[data-chat="1"] #btn-oc-refresh { display: none; }
+  .app[data-chat="1"] .view-actions { flex-wrap: nowrap; }
+  .app[data-chat="1"] .oc-session-select { flex: 1 1 auto; min-width: 0; }
+}
+
+/* A landscape phone leaves roughly 345 CSS px. The desktop header (title,
+   search, refresh) then pushes the message list and composer below the clipped
+   main area, so rotating lost the prompt box. Keep the chat picker and New chat
+   in one row; chat mode still gives the roomier layout when wanted. */
+@media (max-height: 520px) {
+  .app[data-view="opencode"] .view-head { padding: 6px 10px 0; margin-bottom: 4px; }
+  .app[data-view="opencode"] .view-title,
+  .app[data-view="opencode"] .oc-search,
+  .app[data-view="opencode"] #btn-oc-refresh { display: none; }
+  .app[data-view="opencode"] .view-actions { flex-wrap: nowrap; }
+  .app[data-view="opencode"] .oc-session-select { flex: 1 1 auto; min-width: 0; }
+
+  /* The landscape keyboard can leave the WebView with barely 120 px. Android's
+     adjustResize also shrinks innerHeight, so visualViewport cannot identify
+     the keyboard there; the prompt's focus is the reliable signal. Drop every
+     row that can be dismissed while typing so the prompt box and the last
+     messages stay above the keyboard; closing it restores them. */
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .topbar,
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .mobile-nav,
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .view-head,
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .oc-chat-head { display: none; }
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .oc-compose {
+    position: relative;
+    padding: 4px 68px 4px 8px;
+  }
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .oc-compose .btn {
+    position: fixed;
+    right: 8px;
+    bottom: 6px;
+    z-index: 5;
+    padding: 6px 10px;
+  }
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .oc-compose textarea {
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+  html:is([data-keyboard="1"], [data-compose="1"]) .app[data-view="opencode"] .oc-messages { padding: 8px; }
+}
+
+/* Rendered markdown in a message. The plain `.oc-text` keeps pre-wrap for
+   one-line system notes; a rendered block drops it and spaces its own blocks. */
+.oc-text.oc-md { white-space: normal; display: block; }
+.oc-md > :first-child { margin-top: 0; }
+.oc-md > :last-child { margin-bottom: 0; }
+.oc-md p { margin: 0 0 8px; }
+.oc-md h1, .oc-md h2, .oc-md h3, .oc-md h4, .oc-md h5, .oc-md h6 {
+  margin: 12px 0 6px;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.oc-md h1, .oc-md h2 { font-size: 15px; }
+.oc-md ul, .oc-md ol { margin: 0 0 8px; padding-left: 20px; }
+.oc-md li { margin: 2px 0; }
+.oc-md blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+.oc-md hr { margin: 10px 0; border: 0; border-top: 1px solid var(--line); }
+.oc-md a { color: var(--green); text-decoration: underline; overflow-wrap: anywhere; }
+.oc-md code.oc-inline {
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0a0f14;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.oc-md pre.oc-code { margin: 0 0 8px; }
+.oc-md table {
+  width: 100%;
+  margin: 0 0 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.oc-md th, .oc-md td {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.oc-md th.oc-th { background: #0d141a; font-weight: 600; }
+
+/* Slash-command completer: it floats above the composer, inside the form, so a
+   phone keyboard cannot push it off the viewport. */
+.oc-commands {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 6px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(46vh, 320px);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #0d1217;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.oc-command {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.oc-command.on { background: #101a14; }
+.oc-command-name { font-family: var(--mono); font-size: 12px; color: var(--green); }
+.oc-command-desc {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

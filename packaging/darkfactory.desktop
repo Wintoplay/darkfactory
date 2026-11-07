@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=DarkFactory
+GenericName=Agent Supervisor
+Comment=Run and watch coding agents in git worktrees
+Exec=darkfactory launch
+Icon=darkfactory
+Terminal=false
+Categories=Development;
+Keywords=git;worktree;agent;terminal;ai;
+StartupNotify=true
+# The Wails shell sets its GApplication id to dev.darkfactory.Desktop
+# (Linux.ApplicationID), which is what a Wayland window reports as its app_id
+# and an X11 window as its WM_CLASS. The file keeps its old id so existing pins
+# keep working, so name that string explicitly: GNOME matches a window to a
+# launcher through StartupWMClass before it tries the file name.
+StartupWMClass=dev.darkfactory.Desktop

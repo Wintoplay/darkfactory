@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DarkFactory — UI mockup</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080a0d;
+    --panel: #0f1318;
+    --panel-2: #12171d;
+    --line: #232a33;
+    --line-2: #2e3742;
+    --text: #d8dee7;
+    --muted: #8b97a6;
+    --faint: #5c6773;
+    --green: #7ee787;
+    --green-dim: #1f3a28;
+    --amber: #f0b429;
+    --amber-dim: #3a2f14;
+    --red: #ff7b72;
+    --red-dim: #3d1d1c;
+    --blue: #79c0ff;
+    --blue-dim: #16324a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  code, pre { font-family: var(--mono); }
+  code { font-size: 0.92em; color: #c9d5e4; }
+  h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 15px; }
+  p { margin: 8px 0; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .eyebrow { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+  .spacer { flex: 1; }
+
+  /* demo chrome */
+  .demo-bar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 20px; background: #0b0e12; border-bottom: 1px solid var(--line);
+  }
+  .demo-title { display: flex; align-items: baseline; gap: 10px; }
+  .demo-title strong { letter-spacing: 0.02em; }
+  .demo-title span { color: var(--faint); font-size: 12px; }
+  .demo-controls { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: transparent; border: 0; padding: 5px 12px; color: var(--muted); font-size: 12px; }
+  .seg button.on { background: var(--panel-2); color: var(--text); }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); user-select: none; }
+
+  .stage {
+    display: grid; grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 20px; padding: 20px; align-items: start;
+  }
+  .stage.no-notes { grid-template-columns: minmax(0, 1fr); }
+  .frame {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; display: flex; flex-direction: column; min-height: 730px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    transition: width 160ms ease, border-radius 160ms ease;
+  }
+  .frame.phone { width: 390px; min-height: 800px; border-radius: 30px; justify-self: center; }
+
+  /* app shell */
+  .appbar {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); background: #0c1015;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: 0.01em; }
+  .mark {
+    width: 18px; height: 18px; border-radius: 5px; display: inline-block;
+    background: conic-gradient(from 210deg, var(--green), #2f6f45 45%, #10151b 46% 54%, var(--green) 55%);
+    box-shadow: inset 0 0 0 1px #2c3a31;
+  }
+  .brand .ver { color: var(--faint); font-size: 11px; font-weight: 400; }
+  .appbar-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--blue-dim); color: var(--blue); font-size: 11px; border: 1px solid #234a66;
+  }
+
+  .tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: #0b0f14; overflow-x: auto; }
+  .tab {
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    padding: 10px 12px; color: var(--muted); font-size: 12.5px; white-space: nowrap;
+  }
+  .tab.on { color: var(--text); border-bottom-color: var(--green); }
+  .tab .count { color: var(--amber); }
+
+  .content { padding: 16px; flex: 1; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .panel-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .panel-head .pill { margin-left: auto; }
+
+  /* pills, dots, buttons */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 999px;
+    border: 1px solid var(--line-2); color: var(--muted); font-size: 11px; line-height: 1.6;
+    white-space: nowrap;
+  }
+  .pill.ok { color: var(--green); border-color: #2a4a33; background: var(--green-dim); }
+  .pill.warn { color: var(--amber); border-color: #4a3d1c; background: var(--amber-dim); }
+  .pill.danger { color: var(--red); border-color: #5a2a27; background: var(--red-dim); }
+  .pill.info { color: var(--blue); border-color: #24425c; background: var(--blue-dim); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--faint); }
+  .dot.run { background: var(--green); box-shadow: 0 0 0 3px rgba(126,231,135,0.12); }
+  .dot.block { background: var(--amber); box-shadow: 0 0 0 3px rgba(240,180,41,0.12); }
+  .dot.idle { background: var(--faint); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .btn {
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px;
+    padding: 6px 11px; font-size: 12px; color: var(--text);
+  }
+  .btn:hover { border-color: #44505e; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.primary { background: #1d3326; border-color: #2f5a3c; color: #b7f0c1; }
+  .btn.danger { background: #351b1a; border-color: #5a2a27; color: #ffb3ae; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 2px 6px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* fleet */
+  .fleet { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: 16px; }
+  .sidebar { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: 10px; align-self: start; }
+  .side-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; color: var(--muted); font-size: 12px; }
+  .repo { padding: 8px 4px; border-top: 1px solid var(--line); }
+  .repo-head { display: flex; align-items: baseline; gap: 7px; padding: 2px 0 6px; }
+  .repo-name { font-weight: 600; font-size: 13px; }
+  .branch { color: var(--faint); font-size: 11px; }
+  .tree { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .wt { padding: 6px 7px; border-radius: 7px; display: grid; gap: 1px; cursor: default; }
+  .wt:hover { background: #171d24; }
+  .wt.on { background: #1a222a; box-shadow: inset 0 0 0 1px #2a3540; }
+  .wt-name { font-family: var(--mono); font-size: 12px; }
+  .wt-meta { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+  .side-note { border-top: 1px solid var(--line); margin-top: 8px; padding: 8px 4px 2px; color: var(--faint); font-size: 11px; }
+
+  .ws-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+  .ws-head h2 { font-family: var(--mono); font-size: 17px; }
+  .ws-actions { margin-left: auto; display: flex; gap: 7px; }
+
+  .terminal { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #090c0f; }
+  .term-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--muted); background: #0d1116; }
+  #term-out { margin: 0; padding: 12px 14px; height: 250px; overflow: auto; font-size: 12.2px; line-height: 1.62; white-space: pre-wrap; color: #c3cedb; }
+  .term-form { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); background: #0c1014; }
+  .term-form .prompt { color: var(--green); font-family: var(--mono); }
+  .term-form input { flex: 1; background: transparent; border: 0; outline: 0; font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+  .term-form input::placeholder { color: #56616d; }
+
+  .run-strip {
+    margin-top: 12px; display: flex; align-items: center; gap: 12px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel-2);
+  }
+  .run-strip strong { display: block; font-size: 13px; }
+  .run-strip .chips { margin: 0; }
+
+  /* phone fleet */
+  .phone-fleet { display: grid; gap: 10px; }
+  .phone-head { display: flex; align-items: center; gap: 10px; }
+  .phone-head .pill { margin-left: auto; }
+  .pcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--panel-2); display: grid; gap: 7px; }
+  .pcard.urgent { border-color: #4a3d1c; box-shadow: inset 3px 0 0 var(--amber); }
+  .pcard p { margin: 0; font-size: 12.5px; }
+  .pcard .row { gap: 7px; }
+  .mini-term { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .mini-term pre { margin: 0; padding: 9px; font-size: 11px; line-height: 1.55; max-height: 150px; overflow: auto; background: #090c0f; }
+  .answer { display: flex; gap: 6px; }
+  .answer input { flex: 1; background: #0b0f14; border: 1px solid var(--line-2); border-radius: 7px; padding: 6px 8px; font-size: 12px; outline: 0; }
+
+  /* run */
+  .run-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .run-head h2 { font-size: 17px; margin-top: 2px; }
+  .run-head .btn { margin-left: auto; }
+  .run-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+  .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .timeline li { position: relative; padding: 0 0 14px 24px; }
+  .timeline li::before {
+    content: ""; position: absolute; left: 5px; top: 5px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 3px var(--panel);
+  }
+  .timeline li::after { content: ""; position: absolute; left: 9px; top: 17px; bottom: 0; width: 1px; background: var(--line); }
+  .timeline li:last-child::after { display: none; }
+  .timeline li.done::before { background: var(--green); }
+  .timeline li.blocked::before { background: var(--amber); box-shadow: 0 0 0 3px rgba(240,180,41,0.18); }
+  .timeline li.pending::before { background: #39424d; }
+  .t-title { font-size: 13px; font-weight: 550; }
+  .t-meta { color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+  .gate {
+    margin-top: 6px; padding: 7px 9px; border: 1px solid #4a3d1c; border-radius: 7px;
+    background: var(--amber-dim); color: #f5cd6b; font-size: 12px;
+  }
+  .run-side { display: grid; gap: 10px; align-content: start; }
+  .side-card { border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; background: var(--panel-2); display: grid; gap: 6px; }
+  .plan-row { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+  .diff { margin-top: 3px; padding: 7px 8px; border-radius: 6px; background: #0a0e12; border: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: #a9b6c5; line-height: 1.55; }
+  .diff .add { color: var(--green); }
+  .diff .del { color: var(--red); }
+  .side-card > code { display: block; font-size: 11px; color: #b9c6d5; }
+  .side-card > .pill { justify-self: start; }
+
+  /* approvals */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 11px; padding: 13px; background: var(--panel-2); display: grid; gap: 9px; align-content: start; }
+  .card.danger { border-color: #432522; }
+  .card-top { display: flex; align-items: center; gap: 8px; }
+  .kv { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; font-size: 12px; align-items: baseline; }
+  .kv > span { color: var(--faint); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .kv code { overflow-wrap: anywhere; }
+  .second { border: 1px dashed #4a3d1c; border-radius: 8px; padding: 9px; background: #191509; display: grid; gap: 6px; font-size: 12px; }
+  .code-input { background: #0b0f14; border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 8px; font-family: var(--mono); letter-spacing: 0.16em; width: 130px; outline: 0; }
+  .decision { min-height: 18px; font-size: 12px; }
+  .decision.ok { color: var(--green); }
+  .decision.warn { color: var(--amber); }
+
+  /* pair */
+  .pair-grid { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 16px; }
+  .cmd { margin: 8px 0 12px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; background: #090c0f; font-size: 11.5px; line-height: 1.65; color: #c3cedb; white-space: pre-wrap; }
+  .qr-wrap { display: flex; align-items: center; gap: 14px; }
+  #qr { display: grid; grid-template-columns: repeat(21, 1fr); width: 168px; height: 168px; background: #f2f5f8; padding: 9px; border-radius: 8px; flex: none; }
+  #qr i { display: block; }
+  #qr i.on { background: #0b0f14; }
+  .qr-note { color: var(--faint); font-size: 11.5px; }
+  .pair-right { display: grid; gap: 10px; align-content: start; }
+  .tight { margin: 0; padding-left: 16px; display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .tight s { color: var(--faint); }
+
+  /* open */
+  .open-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .open-col { border: 1px solid var(--line); border-radius: 11px; padding: 14px; background: var(--panel-2); }
+  .open-col.before { opacity: 0.72; }
+  .open-col.after { border-color: #2f5a3c; box-shadow: inset 0 0 0 1px rgba(126,231,135,0.08); }
+  .fake-input { margin: 10px 0; border: 1px solid var(--line-2); border-radius: 7px; padding: 8px 10px; font-family: var(--mono); color: var(--faint); letter-spacing: 0.08em; background: #0b0f14; }
+
+  /* status bar + toast */
+  .statusbar {
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    border-top: 1px solid var(--line); background: #0b0e12; color: var(--muted); font-size: 11.5px;
+    flex-wrap: wrap;
+  }
+  .statusbar .warn-text { color: var(--amber); }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px);
+    background: #1a222a; border: 1px solid #33404d; color: var(--text); border-radius: 9px;
+    padding: 9px 14px; font-size: 12.5px; opacity: 0; pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease; z-index: 50; max-width: 90vw;
+  }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* notes */
+  .notes { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 14px; position: sticky; top: 70px; }
+  .notes-head { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+  .notes ul { margin: 0; padding-left: 16px; display: grid; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .notes li::marker { color: var(--green); }
+  .notes code { color: #b9c6d5; }
+  .notes-foot { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 9px; color: var(--faint); font-size: 11px; }
+
+  /* responsive */
+  @media (max-width: 1100px) {
+    .stage { grid-template-columns: minmax(0, 1fr); }
+    .notes { position: static; }
+    .run-grid, .pair-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .demo-bar { flex-wrap: wrap; }
+    .demo-controls { margin-left: 0; }
+    .stage { padding: 12px; }
+    .fleet { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { display: none; }
+    .cards, .open-grid { grid-template-columns: 1fr; }
+    .ws-head { flex-wrap: wrap; }
+    .ws-actions { margin-left: 0; }
+  }
+
+  /* phone frame overrides */
+  .frame.phone .sidebar { display: none; }
+  .frame.phone .fleet { grid-template-columns: minmax(0, 1fr); }
+  .frame.phone .desktop-only { display: none; }
+  .frame.phone .mobile-only { display: grid; }
+  .frame.phone .cards, .frame.phone .open-grid, .frame.phone .run-grid, .frame.phone .pair-grid { grid-template-columns: minmax(0, 1fr); }
+  .frame.phone .appbar { padding: 10px 12px; }
+  .frame.phone .appbar-meta .pill.listen { display: none; }
+  .frame.phone .content { padding: 12px; }
+  .frame.phone .tabs { padding: 0 6px; }
+  .frame.phone .tab { padding: 9px 9px; }
+  .mobile-only { display: none; }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <div class="demo-title">
+    <strong>DarkFactory</strong>
+    <span>UI mockup · static data · no daemon</span>
+  </div>
+  <div class="demo-controls">
+    <div class="seg" role="group" aria-label="Viewport">
+      <button data-view="desktop" class="on">Desktop</button>
+      <button data-view="phone">Phone</button>
+    </div>
+    <label class="check"><input type="checkbox" id="notes-toggle" checked /> Notes</label>
+  </div>
+</div>
+
+<div class="stage" id="stage">
+  <div class="frame" id="frame">
+
+    <header class="appbar">
+      <div class="brand"><span class="mark"></span> darkfactory <span class="ver">0.2 · mockup</span></div>
+      <div class="appbar-meta">
+        <span class="pill ok"><i class="dot run"></i> jail</span>
+        <span class="pill listen">127.0.0.1:8787</span>
+        <span class="pill warn">1 blocked</span>
+        <span class="avatar" title="human principal">you</span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Screens">
+      <button class="tab on" data-tab="fleet" role="tab">Fleet</button>
+      <button class="tab" data-tab="run" role="tab">Run #184 <span class="count">·</span></button>
+      <button class="tab" data-tab="approval" role="tab">Approvals <span class="count">2</span></button>
+      <button class="tab" data-tab="pair" role="tab">Pair</button>
+      <button class="tab" data-tab="open" role="tab">Open</button>
+    </nav>
+
+    <main class="content">
+
+      <!-- FLEET -->
+      <section class="panel active" data-panel="fleet">
+        <div class="fleet">
+          <aside class="sidebar">
+            <div class="side-head"><span>Repos</span><button class="btn ghost" title="Add repo">+</button></div>
+            <div class="repo">
+              <div class="repo-head"><span class="repo-name">acme/api</span><span class="branch">main</span></div>
+              <ul class="tree">
+                <li class="wt on">
+                  <span class="wt-name">login-fix-3f2a</span>
+                  <span class="wt-meta"><i class="dot run"></i> codex · running</span>
+                </li>
+                <li class="wt">
+                  <span class="wt-name">billing-migrate-91c4</span>
+                  <span class="wt-meta"><i class="dot block"></i> claude · blocked</span>
+                </li>
+                <li class="wt">
+                  <span class="wt-name">flaky-test-77b0</span>
+                  <span class="wt-meta"><i class="dot idle"></i> shell · idle</span>
+                </li>
+              </ul>
+            </div>
+            <div class="repo">
+              <div class="repo-head"><span class="repo-name">acme/web</span><span class="branch">main</span></div>
+              <ul class="tree">
+                <li class="wt">
+                  <span class="wt-name">copy-pass-0d21</span>
+                  <span class="wt-meta"><i class="dot idle"></i> opencode · idle</span>
+                </li>
+              </ul>
+            </div>
+            <div class="side-note">one writer per worktree · second session is refused</div>
+          </aside>
+
+          <section class="workspace desktop-only">
+            <div class="ws-head">
+              <div>
+                <div class="eyebrow">acme/api · worktree</div>
+                <h2>login-fix-3f2a</h2>
+                <div class="chips">
+                  <span class="pill ok">jail</span>
+                  <span class="pill">codex 2.1.0</span>
+                  <span class="pill">4 MiB ring</span>
+                </div>
+              </div>
+              <div class="ws-actions">
+                <button class="btn">stop</button>
+                <button class="btn primary">new session</button>
+              </div>
+            </div>
+
+            <div class="terminal">
+              <div class="term-head">
+                <i class="dot run"></i> session 3f2a · running
+                <span class="spacer"></span>
+                <span>attach · raw bytes</span>
+              </div>
+              <pre id="term-out"><span style="color:#7ee787">$</span> codex exec "add idempotency keys to POST /orders"
+<span style="color:#79c0ff">▸</span> reading docs/requirements.md
+<span style="color:#79c0ff">▸</span> editing internal/orders/handler.go
+<span style="color:#7ee787">✓</span> go test ./internal/orders  <span style="color:#8b97a6">3 passed</span>
+<span style="color:#f0b429">!</span> step 5 blocked: <span style="color:#f0b429">POST /v1/orders/{id}/retry does not exist</span>
+  proposed replan v2 → <span style="color:#f0b429">waiting for human</span>
+  <span style="color:#5c6773">(agent did not read the plan; the plan is daemon-owned)</span></pre>
+              <form class="term-form" id="term-form">
+                <span class="prompt">›</span>
+                <input id="term-input" placeholder="one line to the agent…" autocomplete="off" />
+                <button class="btn">send</button>
+              </form>
+            </div>
+
+            <div class="run-strip">
+              <div>
+                <span class="eyebrow">Run #184</span>
+                <strong>Add idempotency keys</strong>
+              </div>
+              <div class="chips">
+                <span class="pill warn">blocked at step 5</span>
+                <span class="pill">plan v2</span>
+              </div>
+              <span class="spacer"></span>
+              <button class="btn" data-jump="run">open run</button>
+            </div>
+          </section>
+
+          <section class="phone-fleet mobile-only">
+            <div class="phone-head"><h2>Fleet</h2><span class="pill warn">1 blocked</span></div>
+
+            <div class="pcard urgent">
+              <div class="eyebrow">Run #184 · acme/api</div>
+              <strong>Add idempotency keys</strong>
+              <p class="muted">Step 5 blocked: endpoint missing. Replan v2 is waiting for you.</p>
+              <div class="row">
+                <button class="btn primary" data-jump="approval">review</button>
+                <button class="btn">stop</button>
+              </div>
+            </div>
+
+            <div class="pcard">
+              <div class="row"><i class="dot run"></i><strong>login-fix-3f2a</strong><span class="muted">codex</span></div>
+              <p class="muted">running · jail · 12m · 3 files touched</p>
+              <button class="btn" id="phone-term-toggle">open terminal (opt-in)</button>
+              <div class="mini-term" id="phone-term" hidden>
+                <pre>✓ 3 tests passed
+! step 5 blocked
+  replan v2 waiting</pre>
+              </div>
+            </div>
+
+            <div class="pcard">
+              <div class="row"><i class="dot block"></i><strong>billing-migrate-91c4</strong><span class="muted">claude</span></div>
+              <p class="muted">waiting for an answer</p>
+              <form class="answer" id="answer-form">
+                <input placeholder="one-line answer…" autocomplete="off" />
+                <button class="btn primary">send</button>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- RUN -->
+      <section class="panel" data-panel="run">
+        <div class="run-head">
+          <div>
+            <div class="eyebrow">Run #184 · acme/api · login-fix-3f2a</div>
+            <h2>Add idempotency keys to POST /orders</h2>
+            <div class="chips">
+              <span class="pill warn">blocked</span>
+              <span class="pill">plan v2</span>
+              <span class="pill ok">jail</span>
+              <span class="pill">ledger #4821</span>
+            </div>
+          </div>
+          <button class="btn">cancel run</button>
+        </div>
+
+        <div class="run-grid">
+          <ol class="timeline">
+            <li class="done">
+              <div class="t-title">1 · read schema</div>
+              <div class="t-meta">command · exit 0 · checkpoint a1b2c3</div>
+            </li>
+            <li class="done">
+              <div class="t-title">2 · add migration</div>
+              <div class="t-meta">command · exit 0 · checkpoint d4e5f6</div>
+            </li>
+            <li class="done">
+              <div class="t-title">3 · update handler</div>
+              <div class="t-meta">exec · codex · exit 0 · checkpoint 778899</div>
+            </li>
+            <li class="done">
+              <div class="t-title">4 · run tests</div>
+              <div class="t-meta">command · exit 0 · checkpoint 0a1b2c</div>
+            </li>
+            <li class="blocked">
+              <div class="t-title">5 · verify retry endpoint</div>
+              <div class="t-meta">exec · blocked: /v1/orders/{id}/retry does not exist</div>
+              <div class="gate">proposal: replan v2 · waiting for human</div>
+            </li>
+            <li class="pending">
+              <div class="t-title">6 · approve plan v2</div>
+              <div class="t-meta">human gate · approve / revise / abort</div>
+            </li>
+            <li class="pending">
+              <div class="t-title">7 · verify idempotency</div>
+              <div class="t-meta">command · required goal gate</div>
+            </li>
+          </ol>
+
+          <aside class="run-side">
+            <div class="side-card">
+              <div class="eyebrow">Plan</div>
+              <div class="plan-row"><span class="pill">v1</span><span class="muted">superseded · steps 1–4</span></div>
+              <div class="plan-row"><span class="pill ok">v2</span><span class="muted">proposed · steps 5+</span></div>
+              <div class="diff"><span class="add">+ step 5: POST /v1/orders/{id}/idempotency</span><br><span class="del">− step 5: POST /v1/orders/{id}/retry</span></div>
+            </div>
+            <div class="side-card">
+              <div class="eyebrow">Checkpoints</div>
+              <code>refs/darkfactory/run/184/step/4</code>
+              <code>→ 0a1b2c · side ref, HEAD untouched</code>
+            </div>
+            <div class="side-card">
+              <div class="eyebrow">Containment</div>
+              <span class="pill ok">jail</span>
+              <span class="muted" style="font-size:11.5px">same uid · HOME projected · repo ro · network on</span>
+            </div>
+            <div class="side-card">
+              <div class="eyebrow">If you do nothing</div>
+              <span class="muted" style="font-size:12px">the run stays <code>blocked</code>, alive and visible. It is never reported as failed.</span>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- APPROVALS -->
+      <section class="panel" data-panel="approval">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Approval queue</div>
+            <h2>Two things need you</h2>
+          </div>
+          <span class="pill">host + device</span>
+        </div>
+
+        <div class="cards">
+          <article class="card">
+            <div class="card-top"><span class="pill warn">gate</span><span class="muted">run #184</span></div>
+            <h3>Approve plan v2</h3>
+            <p class="muted">Step 5 changed from <code>POST /retry</code> to <code>POST /idempotency</code>. Steps 1–4 stay under v1.</p>
+            <div class="kv"><span>effect</span><code>plan v1 → v2 at step 5</code></div>
+            <div class="kv"><span>diff</span><code>1 step changed · 0 targets added</code></div>
+            <div class="kv"><span>checkpoint</span><code>0a1b2c…</code></div>
+            <div class="row">
+              <button class="btn primary" data-approve="approve">approve</button>
+              <button class="btn" data-approve="revise">revise</button>
+              <button class="btn" data-approve="abort">abort</button>
+            </div>
+            <div class="decision"></div>
+          </article>
+
+          <article class="card danger">
+            <div class="card-top"><span class="pill danger">destructive</span><span class="muted">worktree</span></div>
+            <h3>Force-remove flaky-test-77b0</h3>
+            <p class="muted">Stops 1 live session, deletes the worktree, keeps branch <code>darkfactory/flaky-test-77b0</code>.</p>
+            <div class="kv"><span>effect</span><code>stop session 77b0 · git worktree remove --force</code></div>
+            <div class="kv"><span>diff</span><code>4 files changed, 128 insertions(+), 41 deletions(-)</code></div>
+            <div class="kv"><span>checkpoint</span><code>77b0aa…</code></div>
+            <div class="second">
+              <span class="eyebrow">second station</span>
+              <div>Confirm <code>481-207</code> on your iPad.</div>
+              <input class="code-input" id="station-code" placeholder="000-000" inputmode="numeric" autocomplete="off" />
+            </div>
+            <div class="row">
+              <button class="btn danger" data-approve="approve" id="station-confirm" disabled>confirm on device</button>
+              <button class="btn" data-approve="abort">abort</button>
+            </div>
+            <div class="decision"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- PAIR -->
+      <section class="panel" data-panel="pair">
+        <div class="pair-grid">
+          <div class="pair-left">
+            <div class="eyebrow">host</div>
+            <pre class="cmd">$ darkfactory pair --name "iPad"
+paired: iPad (workspace: terminal + chats)
+expires in <span id="pair-timer" style="color:#f0b429">1:47</span></pre>
+
+            <div class="qr-wrap">
+              <div id="qr" aria-label="pairing QR placeholder"></div>
+              <div class="qr-note">
+                code in the URL <strong>fragment</strong><br />
+                never sent to the server<br />
+                single use · 5 attempts
+              </div>
+            </div>
+          </div>
+
+          <div class="pair-right">
+            <div class="side-card">
+              <div class="eyebrow">device</div>
+              <h3>iPad</h3>
+              <div class="chips">
+                <span class="pill">view</span>
+                <span class="pill ok">control</span>
+                <span class="pill ok">terminal</span>
+                <span class="pill">admin · host only</span>
+              </div>
+            </div>
+            <div class="side-card">
+              <div class="eyebrow">what it can do</div>
+              <ul class="tight">
+                <li>approve / deny gates</li>
+                <li>stop a session</li>
+                <li>one line to a waiting agent</li>
+                <li>attach a terminal (opt-in)</li>
+                <li><s>change policy or config</s></li>
+              </ul>
+            </div>
+            <div class="side-card">
+              <div class="eyebrow">guardrails</div>
+              <ul class="tight">
+                <li>uniform 401: wrong = expired</li>
+                <li>revoke takes effect next request</li>
+                <li>restore elsewhere fails closed</li>
+                <li>no master token on the device</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- OPEN -->
+      <section class="panel" data-panel="open">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">First run</div>
+            <h2>One command, no token to paste</h2>
+          </div>
+          <span class="pill ok">M1</span>
+        </div>
+
+        <div class="open-grid">
+          <div class="open-col before">
+            <div class="eyebrow">before</div>
+            <h3>Paste a 64-character token</h3>
+            <div class="fake-input">••••••••••••••••••••••••••••••••</div>
+            <p class="muted">Kept in <code>localStorage</code>. One XSS and the daemon is gone.</p>
+          </div>
+
+          <div class="open-col after">
+            <div class="eyebrow">after</div>
+            <h3><code>darkfactory open</code></h3>
+            <pre class="cmd">$ darkfactory open
+opened http://127.0.0.1:8787/#k=7Q2M…
+cookie set · expires with the browser</pre>
+            <div class="chips">
+              <span class="pill ok">HttpOnly</span>
+              <span class="pill ok">SameSite=Strict</span>
+              <span class="pill ok">no localStorage</span>
+            </div>
+            <p class="muted">The master token stays in <code>~/.config/darkfactory/token</code> for CLI and scripts. It is never in a URL and never served by <code>/state</code>.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="statusbar">
+      <span><i class="dot run"></i> jail</span>
+      <span>3 sessions</span>
+      <span class="warn-text">1 blocked</span>
+      <span>ledger #4821</span>
+      <span class="spacer"></span>
+      <span>outbound: none</span>
+      <span>127.0.0.1:8787</span>
+    </footer>
+  </div>
+
+  <aside class="notes" id="notes">
+    <div class="notes-head">Why this screen</div>
+    <ul id="notes-list"></ul>
+    <div class="notes-foot">Static mockup. Data is fictional. Open this file directly; it is not part of the embedded binary.</div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  const frame = document.getElementById('frame');
+  const notes = document.getElementById('notes');
+  const notesList = document.getElementById('notes-list');
+  const toastEl = document.getElementById('toast');
+
+  const notesByTab = {
+    fleet: [
+      'Containment is per worktree and printed (<code>jail</code>), never implied. <code>off</code> is labelled "not a sandbox".',
+      'One writer per worktree: a second session is refused, so the git index and checkpoint refs never race.',
+      'The phone is read-only or workspace: workspace covers both terminal bytes and OpenCode writes; read-only cannot mutate.',
+      'The plan lives in daemon state, so an agent cannot edit its own orders.'
+    ],
+    run: [
+      'Steps are append-only. The blocked step is a state, not a failure — the run stays alive and visible.',
+      'Checkpoints are side refs: <code>commit-tree</code> + <code>update-ref</code>, so HEAD and the agent branch never move.',
+      'Plan v1 still governs steps 1–4; v2 is a proposal until a human approves it at a step boundary.',
+      'The goal gate (step 7) means the run cannot end <code>succeeded</code> without the required check.'
+    ],
+    approval: [
+      'The card shows the exact effect and the diff stat, not a summary — approving a sentence is not approving a change.',
+      'Destructive verbs need a second station: the code is shown on the host, confirmed on the device.',
+      'A refusal is not a queue: while a human holds control, the agent is refused, not piled up.',
+      'Every decision is recorded before the effect, with the rule that fired.'
+    ],
+    pair: [
+      'The code is in the URL fragment, so it never reaches the server; it is hashed at rest, single use, 120 s, five attempts.',
+      '<code>read</code> can answer a gate, stop and read chats. Typing into a PTY or prompting OpenCode needs <code>workspace</code> scope.',
+      'A device never holds the master token; revocation takes effect on the next request.',
+      'Pairing is network-safe, not same-uid-safe. <code>jail</code> / <code>strict</code> is what changes that.'
+    ],
+    open: [
+      'The token paste is the first-run experience today; <code>open</code> removes it without weakening the CLI path.',
+      'The cookie is <code>HttpOnly</code> and <code>SameSite=Strict</code>; JavaScript never sees the credential.',
+      'The master token stays for scripts and <code>curl</code>, and <code>/state</code> never returns it.',
+      'Host and Origin allowlists land with the cookie — a bearer token cannot be replayed by a rebinding page, a cookie can.'
+    ]
+  };
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === name));
+    notesList.innerHTML = notesByTab[name].map((t) => '<li>' + t + '</li>').join('');
+  }
+
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  document.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.jump)));
+
+  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    const phone = b.dataset.view === 'phone';
+    frame.classList.toggle('phone', phone);
+    document.querySelectorAll('[data-view]').forEach((x) => x.classList.toggle('on', x === b));
+  }));
+
+  document.getElementById('notes-toggle').addEventListener('change', (e) => {
+    notes.style.display = e.target.checked ? '' : 'none';
+    document.getElementById('stage').classList.toggle('no-notes', !e.target.checked);
+  });
+
+  let toastTimer;
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('on'), 2600);
+  }
+
+  document.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    const card = b.closest('.card');
+    const decision = card.querySelector('.decision');
+    const kind = b.dataset.approve;
+    card.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+    decision.className = 'decision ' + (kind === 'approve' ? 'ok' : 'warn');
+    decision.textContent = kind === 'approve'
+      ? 'approved · you · iPad · ledger #4822'
+      : kind === 'revise'
+        ? 'revision requested · agent stays blocked'
+        : 'aborted · run #184 cancelled';
+    toast(kind === 'approve' ? 'Approved. The run resumes at step 6.' : 'Recorded. The run stays blocked.');
+  }));
+
+  const stationCode = document.getElementById('station-code');
+  const stationConfirm = document.getElementById('station-confirm');
+  stationCode.addEventListener('input', () => {
+    const digits = stationCode.value.replace(/\D/g, '');
+    stationConfirm.disabled = digits !== '481207';
+  });
+
+  document.getElementById('term-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('term-input');
+    const out = document.getElementById('term-out');
+    if (!input.value.trim()) return;
+    out.append(document.createTextNode('\n› ' + input.value));
+    input.value = '';
+    out.scrollTop = out.scrollHeight;
+  });
+
+  document.getElementById('answer-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = e.target.querySelector('input');
+    if (!input.value.trim()) return;
+    toast('One line sent to billing-migrate-91c4. It is a ledger event, not a shell.');
+    input.value = '';
+  });
+
+  document.getElementById('phone-term-toggle').addEventListener('click', () => {
+    const term = document.getElementById('phone-term');
+    term.hidden = !term.hidden;
+    toast(term.hidden ? 'Terminal closed.' : 'Terminal attached (opt-in).');
+  });
+
+  // deterministic QR-ish placeholder; not a real code
+  const qr = document.getElementById('qr');
+  const finder = (x, y) => {
+    const inBox = (bx, by) => x >= bx && x < bx + 7 && y >= by && y < by + 7;
+    const ring = (bx, by) => {
+      const dx = x - bx, dy = y - by;
+      const edge = dx === 0 || dx === 6 || dy === 0 || dy === 6;
+      const core = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4;
+      return edge || core;
+    };
+    if (inBox(0, 0)) return ring(0, 0);
+    if (inBox(14, 0)) return ring(14, 0);
+    if (inBox(0, 14)) return ring(0, 14);
+    return false;
+  };
+  for (let y = 0; y < 21; y++) {
+    for (let x = 0; x < 21; x++) {
+      const cell = document.createElement('i');
+      const noise = ((x * 7 + y * 11 + ((x * y) % 5)) % 3 === 0);
+      cell.className = finder(x, y) || (noise && !(x < 8 && y < 8) && !(x > 12 && y < 8) && !(x < 8 && y > 12)) ? 'on' : '';
+      qr.append(cell);
+    }
+  }
+
+  let left = 107;
+  const timer = document.getElementById('pair-timer');
+  setInterval(() => {
+    if (left <= 0) return;
+    left -= 1;
+    timer.textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+  }, 1000);
+
+  const params = new URLSearchParams(location.search);
+  if (params.get('view') === 'phone') {
+    frame.classList.add('phone');
+    document.querySelectorAll('[data-view]').forEach((x) => x.classList.toggle('on', x.dataset.view === 'phone'));
+  }
+  const startTab = params.get('tab');
+  if (startTab && notesByTab[startTab]) showTab(startTab);
+  else showTab('fleet');
+</script>
+</body>
+</html>

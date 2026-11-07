@@ -1,0 +1,113 @@
+name: android
+
+# Build the phone client on a runner that has the SDK, so an APK can be
+# produced without a local Android toolchain. Manual only: this is an
+# artifact, not a published release asset.
+#
+# Signing stays out of the repository. Set ANDROID_KEYSTORE_BASE64 (the
+# keystore, base64-encoded) and ANDROID_KEYSTORE_PROPERTIES (the contents of
+# android/keystore.properties) to sign with the same key as the prerelease
+# APK. Without both secrets this builds a debug APK, which will NOT install
+# over a release-signed install.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: build apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # versionName/versionCode come from the nearest tag and the commit
+          # count; a shallow clone would report neither.
+          fetch-depth: 0
+
+      - name: version from git
+        run: |
+          name=$(git describe --tags --always --dirty | sed 's/^v//')
+          code=$(git rev-list --count HEAD)
+          echo "ANDROID_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "APK version: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # GitHub's Ubuntu image ships the Android SDK; name it explicitly so the
+      # build does not depend on a Gradle guess. Fail loudly if it is absent.
+      - name: locate the android sdk
+        run: |
+          if [ -z "${ANDROID_HOME:-}" ] && [ -d /usr/local/lib/android/sdk ]; then
+            echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+            echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+          fi
+          test -n "${ANDROID_HOME:-}" || { echo "no Android SDK on this runner" >&2; exit 1; }
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+
+      - name: restore the release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PROPERTIES:-}" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/darkfactory.jks"
+            printf '%s\n' "$ANDROID_KEYSTORE_PROPERTIES" > android/keystore.properties
+            if grep -q '^storeFile=' android/keystore.properties; then
+              sed -i "s|^storeFile=.*|storeFile=$RUNNER_TEMP/darkfactory.jks|" android/keystore.properties
+            else
+              printf 'storeFile=%s\n' "$RUNNER_TEMP/darkfactory.jks" >> android/keystore.properties
+            fi
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            echo "SIGNED=0" >> "$GITHUB_ENV"
+            echo "No Android signing secrets; the APK will be debug-signed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: build signed release
+        if: env.SIGNED == '1'
+        run: make android-release
+
+      - name: build debug
+        if: env.SIGNED != '1'
+        run: make android-build
+
+      - name: stage the apk
+        run: |
+          mkdir -p out
+          if [ "$SIGNED" = "1" ]; then
+            apk=android/app/build/outputs/apk/release/app-release.apk
+            label=release
+          else
+            apk=android/app/build/outputs/apk/debug/app-debug.apk
+            label=debug
+          fi
+          test -f "$apk" || { echo "missing $apk" >&2; exit 1; }
+          cp "$apk" "out/darkfactory-android-$label.apk"
+
+      - name: verify the apk version
+        run: |
+          apk=$(ls out/*.apk)
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)
+          badging=$("$aapt" dump badging "$apk")
+          echo "$badging" | grep -Fq "versionName='$ANDROID_VERSION_NAME'" || {
+            echo "versionName mismatch (want $ANDROID_VERSION_NAME): $badging" >&2; exit 1; }
+          echo "$badging" | grep -Fq "versionCode='$ANDROID_VERSION_CODE'" || {
+            echo "versionCode mismatch (want $ANDROID_VERSION_CODE): $badging" >&2; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: darkfactory-android
+          path: out/*.apk
+          if-no-files-found: error

@@ -1,0 +1,9 @@
+module github.com/Wintoplay/darkfactory
+
+go 1.27.0
+
+require (
+	github.com/creack/pty v1.1.24
+	go.etcd.io/bbolt v1.3.11
+	golang.org/x/sys v0.47.0
+)

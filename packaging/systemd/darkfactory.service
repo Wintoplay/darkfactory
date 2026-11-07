@@ -1,0 +1,22 @@
+[Unit]
+Description=DarkFactory — local supervisor for coding agents in git worktrees
+Documentation=https://github.com/Wintoplay/darkfactory
+After=network.target
+# A second serve exits on purpose (it names the running pid), so a restart does
+# not fix it; the burst limit keeps that from becoming a loop.
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/darkfactory serve
+Restart=on-failure
+RestartSec=5
+# The session host detaches with setsid but stays in this cgroup, so stopping
+# the unit takes the PTYs with it. That is what `systemctl --user stop` should
+# mean; use `darkfactory stop` when the sessions must survive.
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

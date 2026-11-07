@@ -1,0 +1,87 @@
+name: release
+
+# Tag a commit to publish:  git tag v0.1.0 && git push origin v0.1.0
+# The workflow uploads the tarballs, the .deb packages and SHA256SUMS to the
+# release for that tag. A manual run only builds and uploads them as a CI
+# artifact, which is the way to try a release without publishing one.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  # Build provenance for every published artifact. The workflow's OIDC identity
+  # is signed by Sigstore and stored on this repository, so a download can be
+  # checked with `gh attestation verify` instead of trusting the checksum file
+  # that traveled with it.
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The version string is the tag without its `v`, so `darkfactory version`
+      # prints 0.1.0 for tag v0.1.0. A manual run on a branch builds 0.0.0-dev.
+      - name: make dist
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0-dev"
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          make dist VERSION="${version}"
+
+      - name: checksums verify
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      - name: attest the build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/SHA256SUMS
+
+      - name: publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          # A hyphen marks a semver prerelease (v0.1.0-rc.1). GitHub's
+          # /releases/latest excludes prereleases, so the default install.sh
+          # path keeps pointing at the last stable release.
+          extra=""
+          case "${GITHUB_REF_NAME}" in
+            *-*) extra="--prerelease" ;;
+          esac
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.deb dist/SHA256SUMS --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              dist/*.tar.gz dist/*.deb dist/SHA256SUMS \
+              --title "DarkFactory ${GITHUB_REF_NAME}" \
+              --generate-notes $extra
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: github.ref_type != 'tag'
+        with:
+          name: darkfactory-dist
+          path: dist/
+          if-no-files-found: error

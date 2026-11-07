@@ -1,0 +1,9 @@
+{
+  "name": "darkfactory-client-evaluation",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Development-only browser comparison client",
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

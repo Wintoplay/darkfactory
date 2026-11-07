@@ -1,0 +1,22 @@
+/bin/
+/dist/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.DS_Store
+/tools/clientbench/node_modules/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/android/keystore.properties
+/android/app/*.jks
+/android/app/*.keystore
+/android/**/generated/
+
+# Test evidence is local: the trees are large and contain machine-specific
+# screenshots, so they are not published.
+/test/artifacts/
+__pycache__/
+*.pyc

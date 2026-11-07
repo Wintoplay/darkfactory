@@ -1,0 +1,47 @@
+{
+  "repository": "https://github.com/stablyai/orca",
+  "revision": "2e40b990b8a70f0d4bb987be2fb6b51a38e477bc",
+  "source": "local sibling checkout git objects; origin URL verified during import",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "ff1b611f80580d49f4b97e93a97b24eb050b0671b26b8afe16341fab699112f3"
+    },
+    {
+      "path": "mobile/src/terminal/terminal-gesture-input.ts",
+      "sha256": "8772f9c3715f61b618eddbe34b5bfca019c563cd0bc542754c07d0d712140683"
+    },
+    {
+      "path": "mobile/src/terminal/terminal-gesture-input.test.ts",
+      "sha256": "a5e3cf92ffc683f6274dbdab6dc2ec5fc25ab2b513e21e1119eacbf226390b1b"
+    },
+    {
+      "path": "mobile/src/terminal/document/mouse-input-encoding.ts",
+      "sha256": "a596657fa2037168eca5e2e76cb599693b7e8e954c2e8d76c245e24364249dcc"
+    },
+    {
+      "path": "mobile/src/terminal/document/mouse-report-cell.ts",
+      "sha256": "98ff3e851214d13d7c8f8739ee270b37dc3ecc973c6d65f0ef6063bd9fead1f5"
+    },
+    {
+      "path": "mobile/src/terminal/terminal-mouse-authority.test.ts",
+      "sha256": "455c7b366fe753b8241d65ca498f0d376f4557d657c2aaa81cd66e8ef26d3d5f"
+    },
+    {
+      "path": "mobile/modules/orca-mobile-web-shell/android/src/main/java/expo/modules/orcamobilewebshell/MobileWebShellOrigin.kt",
+      "sha256": "8555565b6cf143268ed32e0647883bba22259b85250145feb55a8cba9430bc50"
+    },
+    {
+      "path": "mobile/modules/orca-mobile-web-shell/android/src/main/java/expo/modules/orcamobilewebshell/MobileWebShellCsp.kt",
+      "sha256": "c1671a1ebaccf1c37c358e06865253b48ac8a0131bc0426f119975fe910c27c5"
+    },
+    {
+      "path": "mobile/modules/orca-mobile-web-shell/android/src/main/java/expo/modules/orcamobilewebshell/MobileWebShellResponseHeaders.kt",
+      "sha256": "3c74b39fc06a480ad5ab303c41fd33ade07e7cf14f7a46c32dff5747b62a8d8e"
+    },
+    {
+      "path": "mobile/modules/orca-mobile-web-shell/android/src/main/java/expo/modules/orcamobilewebshell/MobileWebShellNavigationPolicy.kt",
+      "sha256": "2783ed72b6b5b6a5cc4b0f332c61505f32b377d6785ca64a7197bd3a973045a0"
+    }
+  ]
+}

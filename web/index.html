@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#080a0d" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="csp-nonce" content="{{CSP_NONCE}}" />
+  <title>DarkFactory</title>
+  <link rel="stylesheet" href="/vendor/xterm.css?v=2026-11-07.03" />
+  <link rel="stylesheet" href="/style.css?v=2026-11-07.03" />
+</head>
+<body>
+
+<div class="banner" id="insecure-banner" hidden>
+  Not a secure context. Use <code>tailscale serve</code> or an SSH tunnel before typing a token on a phone.
+</div>
+<div class="banner" id="client-error" hidden>
+  <span id="client-error-text">UI error</span>
+  <button class="btn ghost" id="btn-client-reload" type="button">Reload</button>
+</div>
+
+<div class="app" id="app" hidden>
+  <header class="topbar">
+    <button class="brand" id="btn-home" type="button" title="Fleet">
+      <span class="mark" aria-hidden="true"></span><span class="brand-name">darkfactory</span>
+    </button>
+    <div class="topbar-actions">
+      <div class="attention-wrap">
+        <button class="icon-btn attention-btn" id="btn-attention" type="button" title="Activity" aria-label="Agent activity: nothing unread" aria-haspopup="dialog" aria-expanded="false" aria-controls="attention-pop">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 1.6a3.6 3.6 0 0 0-3.6 3.6v2.9L3 10.3h10l-1.4-2.2V5.2A3.6 3.6 0 0 0 8 1.6Zm0 12.1a1.9 1.9 0 0 0 1.9-1.6H6.1A1.9 1.9 0 0 0 8 13.7Z" fill="currentColor"/></svg>
+          <span class="attention-count" id="attention-count" hidden>0</span>
+        </button>
+        <section class="attention-pop" id="attention-pop" hidden aria-label="Unread activity">
+          <header class="attention-pop-head">
+            <span>Activity</span>
+            <span class="attention-head-actions">
+              <button class="btn ghost attention-settings" id="btn-alert-settings" type="button" title="Alert settings">Settings</button>
+              <button class="btn ghost attention-clear" id="attention-clear" type="button" hidden>Clear all</button>
+            </span>
+          </header>
+          <ul class="attention-list" id="attention-list"></ul>
+        </section>
+      </div>
+      <button class="btn ghost alerts-top" id="btn-alert-settings-top" type="button" title="Alert settings" aria-label="Alert settings">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 4h6M11 4h3M2 8h2M7 8h7M2 12h9M13 12h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9.5" cy="4" r="1.5" fill="currentColor"/><circle cx="5.5" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>
+        <span class="alerts-label">Alerts</span>
+      </button>
+      <button class="pill" id="conn-pill" type="button" title="Refresh daemon state"><i class="dot run" id="conn-dot"></i><span id="conn-text">connected</span></button>
+      <button class="btn ghost runs-top" id="btn-runs" type="button">Runs</button>
+      <button class="btn ghost pair-top" id="btn-pair" type="button">Pair phone</button>
+      <button class="btn ghost devices-top" id="btn-devices" type="button">Devices</button>
+      <details class="menu" id="new-menu">
+        <summary class="btn">New</summary>
+        <div class="menu-pop">
+          <button type="button" data-new="session">Session</button>
+          <button type="button" data-new="worktree">Isolated worktree</button>
+          <button type="button" data-new="repo">Repo</button>
+        </div>
+      </details>
+      <button class="btn ghost" id="btn-disconnect" type="button">Disconnect</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-head">
+        <span>Workspace</span>
+        <button class="icon-btn" id="btn-add-repo" type="button" title="Add repo" aria-label="Add repo">+</button>
+      </div>
+      <div class="tree" id="tree"></div>
+      <div class="side-foot muted">multiple sessions per worktree · one PTY each</div>
+    </aside>
+
+    <main class="main" id="main">
+
+      <section class="view" id="view-session" hidden>
+        <div class="view-head">
+          <div class="view-title">
+            <div class="eyebrow" id="session-crumb">session</div>
+            <h1 id="session-title">—</h1>
+            <div class="chips" id="session-chips"></div>
+          </div>
+          <div class="view-actions">
+            <button class="btn" id="btn-sess-chat" type="button" hidden>Chat</button>
+            <button class="btn" id="btn-new-session" type="button">New session</button>
+            <button class="btn primary" id="btn-restart-session" type="button" hidden>Restart</button>
+            <button class="btn danger" id="btn-stop-session" type="button">Stop</button>
+          </div>
+        </div>
+        <div class="session-tabs" id="session-tabs" role="tablist" aria-label="Sessions in this workspace"></div>
+        <div class="terminal-blocked" id="terminal-blocked" hidden>
+          <p>This device is read-only.</p>
+          <p class="muted">Pair it again with workspace access to attach and send prompts, or use the desktop browser. You can still read chats from Open chat.</p>
+          <button class="btn" id="btn-blocked-chat" type="button" hidden>Open chat</button>
+        </div>
+        <div class="terminal" id="terminal-pane">
+          <div class="term-head">
+            <span class="term-activity" id="term-dot"></span>
+            <span id="term-status">idle</span>
+            <span class="spacer"></span>
+            <span class="muted" id="term-meta"></span>
+            <div class="term-tools">
+              <button class="term-btn" id="btn-term-scroll-up" type="button" title="Scroll up (PageUp)" aria-label="Scroll terminal up">↑</button>
+              <button class="term-btn" id="btn-term-scroll-down" type="button" title="Scroll down (PageDown)" aria-label="Scroll terminal down">↓</button>
+              <button class="term-btn" id="btn-term-latest" type="button" title="Jump to latest (End)" aria-label="Jump to latest">⇣</button>
+              <button class="term-btn" id="btn-term-font-down" type="button" title="Decrease terminal font size" aria-label="Decrease terminal font size">A−</button>
+              <button class="term-btn" id="btn-term-font-up" type="button" title="Increase terminal font size" aria-label="Increase terminal font size">A+</button>
+              <button class="term-btn" id="btn-term-refresh" type="button" title="Refit and repaint the terminal" aria-label="Refit and repaint the terminal">↻</button>
+              <button class="term-btn" id="btn-term-native" type="button" title="Open this session in Ghostty" hidden>Ghostty</button>
+              <button class="term-btn" id="btn-term-focus" type="button" title="Focus mode: hide the fleet chrome" aria-label="Enter terminal focus mode">Focus</button>
+              <button class="term-btn" id="btn-term-chat" type="button" title="Open the OpenCode chat panel" hidden>Chat</button>
+            </div>
+          </div>
+          <div id="terminal" aria-label="Terminal"></div>
+          <form class="term-compose" id="form-term-input" autocomplete="off">
+            <div class="term-keys">
+              <button class="term-btn" type="button" data-term-key="esc" title="Send Escape" aria-label="Send Escape">esc</button>
+              <button class="term-btn" type="button" data-term-key="tab" title="Send Tab" aria-label="Send Tab">tab</button>
+              <button class="term-btn" type="button" data-term-key="ctrl-c" title="Send Ctrl-C" aria-label="Send Ctrl-C">^C</button>
+            </div>
+            <textarea id="term-input" rows="1" placeholder="Type a line for the PTY" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+            <button class="btn primary" id="btn-term-send" type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="view" id="view-worktree" hidden>
+        <div class="view-head">
+          <div class="view-title">
+            <div class="eyebrow" id="wt-crumb">worktree</div>
+            <h1 id="wt-title">—</h1>
+            <div class="chips" id="wt-chips"></div>
+          </div>
+          <div class="view-actions">
+            <button class="btn" id="btn-wt-chat" type="button" hidden>Chat</button>
+            <button class="btn primary" id="btn-wt-new-session" type="button">New session</button>
+            <button class="btn danger" id="btn-wt-remove" type="button">Remove</button>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><span class="eyebrow">Sessions</span></div>
+            <ul class="rows" id="wt-sessions"></ul>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="eyebrow">Details</span></div>
+            <div class="kv"><span>path</span><code id="wt-path">—</code></div>
+            <div class="kv"><span>branch</span><code id="wt-branch">—</code></div>
+            <div class="kv"><span>base</span><code id="wt-base">—</code></div>
+            <div class="kv"><span>mode</span><code id="wt-mode">same-uid (not a sandbox)</code></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-empty">
+        <div class="empty">
+          <div class="empty-mark" aria-hidden="true"></div>
+          <h1 id="empty-title">Give an agent a session.</h1>
+          <p class="muted" id="empty-text">Add a repo, then start a shell or an agent preset in its checkout or in an isolated worktree. The daemon owns the PTY; this browser is a client that can disappear.</p>
+          <div class="row">
+            <button class="btn primary" id="btn-empty-repo" type="button">Add repo</button>
+            <button class="btn" id="btn-empty-session" type="button">New session</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-runs" hidden>
+        <div class="view-head">
+          <div class="view-title">
+            <div class="eyebrow">Runs</div>
+            <h1 id="runs-title">Runs</h1>
+            <div class="chips" id="runs-chips"></div>
+          </div>
+          <div class="view-actions">
+            <button class="btn primary" id="btn-new-run" type="button">New run</button>
+          </div>
+        </div>
+        <div class="runs-layout">
+          <div class="card runs-list-card">
+            <div class="card-head"><span class="eyebrow">All runs</span></div>
+            <ul class="rows" id="runs-list"></ul>
+          </div>
+          <div class="card run-detail-card" id="run-detail">
+            <div class="card-head"><span class="eyebrow">Run detail</span></div>
+            <div id="run-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-opencode" hidden>
+        <div class="view-head">
+          <div class="view-title">
+            <div class="eyebrow" id="oc-crumb">chat</div>
+            <h1 id="oc-title">Chat</h1>
+            <div class="chips" id="oc-chips"></div>
+          </div>
+          <div class="view-actions">
+            <input class="oc-search" id="oc-search" type="search" placeholder="Search chats" autocomplete="off" spellcheck="false" aria-label="Search OpenCode chats" />
+            <select class="oc-session-select" id="oc-session-select" aria-label="OpenCode session"></select>
+            <button class="btn" id="btn-oc-new" type="button">New chat</button>
+            <button class="btn ghost" id="btn-oc-refresh" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="oc-layout">
+          <aside class="oc-list" aria-label="OpenCode sessions">
+            <div class="oc-list-head">
+              <span class="eyebrow">Sessions</span>
+              <span class="spacer"></span>
+              <button class="icon-btn" id="btn-oc-new-side" type="button" title="New chat" aria-label="New chat">+</button>
+            </div>
+            <div class="oc-sessions" id="oc-sessions"></div>
+          </aside>
+          <div class="oc-chat">
+            <div class="oc-chat-head">
+              <button class="term-btn" id="btn-oc-worktree" type="button" title="Back to this worktree">Worktree</button>
+              <span class="oc-chat-title" id="oc-chat-title">Select a chat</span>
+              <span class="spacer"></span>
+              <button class="term-btn" id="btn-oc-mode" type="button" title="Chat mode: give the chat the whole screen" aria-pressed="false">Chat</button>
+              <button class="term-btn" id="btn-oc-interrupt" type="button" title="Interrupt the current OpenCode turn" hidden>Stop</button>
+              <button class="term-btn" id="btn-oc-latest" type="button" title="Jump to latest">⇣ Latest</button>
+            </div>
+            <div class="oc-permissions" id="oc-permissions" hidden></div>
+            <button class="oc-older" id="btn-oc-older" type="button" hidden>Load older messages</button>
+            <div class="oc-messages" id="oc-messages" aria-live="polite"></div>
+            <form class="oc-compose" id="form-oc-prompt">
+              <div class="oc-commands" id="oc-commands" role="listbox" aria-label="Commands" hidden></div>
+              <textarea id="oc-prompt" rows="2" placeholder="Message OpenCode…  (/ for commands)" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></textarea>
+              <button class="btn primary" id="btn-oc-send" type="submit">Send</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="ctx-menu" id="ctx-menu" role="menu" aria-label="Actions" hidden></div>
+
+  <nav class="mobile-nav" id="mobile-nav" aria-label="Sections">
+    <button class="nav-btn on" type="button" data-view="fleet">Fleet<span class="nav-badge" id="nav-attention" hidden>0</span></button>
+    <button class="nav-btn" type="button" data-view="session">Session</button>
+    <button class="nav-btn" type="button" data-view="runs">Runs</button>
+  </nav>
+
+  <footer class="statusbar">
+    <span id="status-counts">0 repos · 0 worktrees · 0 sessions</span>
+    <span class="spacer"></span>
+    <span class="muted" id="status-containment" title="Containment is per worktree; jail masks daemon state but is still the same uid.">same-uid · not a sandbox</span>
+    <span class="muted wide-only">outbound: none</span>
+    <span class="muted" id="ui-version"></span>
+  </footer>
+</div>
+
+<div class="connect" id="connect">
+  <form class="connect-card" id="connect-form">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span class="brand-name">darkfactory</span></div>
+    <h1>Connect to the daemon</h1>
+    <p class="muted">Run <code>darkfactory open</code> for a one-time link, pair this device with a code from a connected browser, or paste the token from <code>darkfactory token</code>. A pasted token stays in this tab only.</p>
+    <label class="field">
+      <span>Access token</span>
+      <input id="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="64 hex characters" />
+    </label>
+    <div class="connect-error" id="connect-error" role="alert"></div>
+    <button class="btn primary wide" type="submit">Connect</button>
+    <div class="connect-or"><span>or</span></div>
+    <label class="field">
+      <span>Pairing code</span>
+      <input id="pair-input" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="ABCD-EFGH" />
+    </label>
+    <button class="btn wide" id="btn-pair-connect" type="button">Pair this device</button>
+    <p class="hint muted">On a phone, open the link from <strong>Pair phone</strong>, or enter the code shown there. The code expires in 2 minutes and works once.</p>
+    <p class="hint muted">The server binds to 127.0.0.1 by default. For a phone, use Tailscale Serve or an SSH tunnel — never a public bind.</p>
+  </form>
+</div>
+
+<dialog id="dlg-pair" class="dialog" closedby="closerequest">
+  <div class="dialog-head">
+    <h2>Pair a phone</h2>
+    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+  </div>
+  <p class="hint muted">Scan the QR with the phone camera, open the link, or enter the code there. The code expires in 2 minutes and works once.</p>
+  <label class="field">
+    <span>Device name</span>
+    <input id="pair-label" autocomplete="off" maxlength="80" value="Phone" />
+  </label>
+  <label class="field">
+    <span>Access</span>
+    <select id="pair-scope">
+      <option value="full">Workspace (terminal + chats)</option>
+      <option value="read">Read-only</option>
+    </select>
+  </label>
+  <p class="hint muted">The name and access are made here; the phone cannot change them. Workspace access is terminal and OpenCode together, because an OpenCode turn can already run workspace actions. Changing either generates a new code.</p>
+  <div class="pair-qr-wrap">
+    <div class="pair-qr" id="pair-qr" role="img" aria-label="Pairing QR code for the native app" hidden></div>
+  </div>
+  <div class="pair-code-row">
+    <code class="pair-code" id="pair-code">—</code>
+    <button class="btn ghost" id="btn-pair-copy-code" type="button">Copy code</button>
+  </div>
+  <p class="hint muted" id="pair-fingerprint" hidden></p>
+  <label class="field">
+    <span>Pairing link</span>
+    <div class="path-row">
+      <input id="pair-url" autocomplete="off" autocapitalize="off" spellcheck="false" />
+      <button class="btn ghost" id="btn-pair-copy-url" type="button">Copy</button>
+    </div>
+  </label>
+  <p class="hint muted" id="pair-note"></p>
+  <p class="hint muted">This is same-user access, not a separate sandbox. The phone gets the same HttpOnly browser session as this browser.</p>
+  <p class="hint muted">Tailscale Serve: add its hostname to <code>allowedHosts</code> in <code>config.json</code>.</p>
+  <div class="dialog-actions">
+    <button class="btn ghost" id="btn-pair-new" type="button">New code</button>
+    <button class="btn" type="button" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-alerts" class="dialog" closedby="closerequest">
+  <form id="form-alerts">
+    <div class="dialog-head">
+      <h2>Alert settings</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <p class="hint muted">The bell always keeps every event. These switches decide what may interrupt this desktop and a paired phone.</p>
+    <label class="check"><input type="checkbox" id="alert-blocked" /> Blocked runs and waiting agents</label>
+    <label class="check"><input type="checkbox" id="alert-prompts" /> Permission requests and questions</label>
+    <label class="check"><input type="checkbox" id="alert-finished" /> Finished or lost terminal sessions</label>
+    <label class="check"><input type="checkbox" id="alert-replies" /> Chat replies (activity only when off)</label>
+    <label class="check"><input type="checkbox" id="alert-children" /> Subagent and child chats</label>
+    <p class="hint muted" id="alerts-note"></p>
+    <div class="dialog-actions">
+      <button class="btn ghost" type="button" data-close>Cancel</button>
+      <button class="btn" id="btn-alerts-save" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-devices" class="dialog" closedby="closerequest">
+  <div class="dialog-head">
+    <h2>Paired devices</h2>
+    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+  </div>
+  <p class="hint muted">Each paired browser has its own session. Revoke one here; the next request from that device is refused.</p>
+  <div class="devices-list" id="devices-list"></div>
+  <p class="hint muted" id="devices-note"></p>
+  <div class="dialog-actions">
+    <button class="btn danger" id="btn-devices-revoke-all" type="button">Revoke all others</button>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="btn-devices-refresh" type="button">Refresh</button>
+    <button class="btn" type="button" data-close>Done</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-repo" class="dialog" closedby="closerequest">
+  <form id="form-repo">
+    <div class="dialog-head">
+      <h2>Add repo</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <div class="field">
+      <span>Project directory</span>
+      <div class="path-row">
+        <input id="repo-path" name="path" required placeholder="/home/you/src/api" autocomplete="off" spellcheck="false" aria-label="Project directory" />
+        <button class="btn" id="btn-browse" type="button" aria-controls="repo-browser" aria-expanded="false">Browse…</button>
+      </div>
+      <p class="hint muted">A git repository gets isolated worktrees. Any other folder opens as an in-place workspace.</p>
+    </div>
+    <div class="browser" id="repo-browser" hidden>
+      <div class="browser-head">
+        <button class="icon-btn" id="browser-up" type="button" title="Parent directory" aria-label="Parent directory">↑</button>
+        <code class="browser-path" id="browser-path">~</code>
+        <button class="btn ghost" id="browser-home" type="button">Home</button>
+        <button class="btn ghost" id="browser-close" type="button">Close</button>
+      </div>
+      <div class="browser-list" id="browser-list"></div>
+      <div class="browser-foot">
+        <span class="browser-note" id="browser-note"></span>
+        <label class="check"><input type="checkbox" id="browser-hidden" /> hidden</label>
+        <button class="btn primary" id="browser-use" type="button">Use this folder</button>
+      </div>
+    </div>
+    <label class="field">
+      <span>Name <span class="muted">(optional)</span></span>
+      <input name="name" placeholder="api" autocomplete="off" spellcheck="false" />
+    </label>
+    <div class="dialog-actions">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit">Add repo</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-worktree" class="dialog" closedby="closerequest">
+  <form id="form-worktree">
+    <div class="dialog-head">
+      <h2>New isolated worktree</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <label class="field">
+      <span>Repo</span>
+      <select name="repoId" id="wt-repo" required></select>
+    </label>
+    <label class="field">
+      <span>Name</span>
+      <input name="name" required placeholder="login-fix" autocomplete="off" spellcheck="false" />
+    </label>
+    <label class="field">
+      <span>Base ref</span>
+      <input name="baseRef" value="HEAD" autocomplete="off" spellcheck="false" />
+    </label>
+    <p class="hint muted">Creates a separate directory with its own branch. Agent history and uncommitted files from your checkout do not carry over. To reuse them, start a session in the checkout instead.</p>
+    <div class="dialog-actions">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit">Create isolated worktree</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-session" class="dialog" closedby="closerequest">
+  <form id="form-session">
+    <div class="dialog-head">
+      <h2>New session</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <p class="hint muted" id="sess-target" hidden></p>
+    <label class="field" id="sess-repo-field">
+      <span>Repo</span>
+      <select name="repoId" id="sess-repo" required></select>
+    </label>
+    <label class="field" id="sess-where-field">
+      <span>Where</span>
+      <select name="location" id="sess-where" required></select>
+    </label>
+    <div id="sess-new-fields" hidden>
+      <label class="field">
+        <span>Worktree name</span>
+        <input name="worktreeName" placeholder="login-fix" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Base ref</span>
+        <input name="baseRef" value="HEAD" autocomplete="off" spellcheck="false" />
+      </label>
+    </div>
+    <p class="hint muted" id="sess-hint"></p>
+    <label class="field">
+      <span>Agent</span>
+      <select name="agent" id="sess-agent" required></select>
+    </label>
+    <label class="field">
+      <span>Title <span class="muted">(optional)</span></span>
+      <input name="title" placeholder="login fix" autocomplete="off" spellcheck="false" />
+    </label>
+    <div class="dialog-actions">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit">Start session</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-run" class="dialog wide-dialog" closedby="closerequest">
+  <form id="form-run">
+    <div class="dialog-head">
+      <h2>New run</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <label class="field">
+      <span>Worktree or workspace</span>
+      <select name="worktreeId" id="run-wt" required></select>
+    </label>
+    <label class="field">
+      <span>Goal</span>
+      <input name="goal" required placeholder="Make the login tests pass" autocomplete="off" />
+    </label>
+    <label class="field">
+      <span>Plan steps <span class="muted">(JSON array)</span></span>
+      <textarea name="steps" id="run-steps" rows="10" spellcheck="false" required></textarea>
+      <p class="hint muted">Kinds: <code>command</code> (argv, no shell), <code>exec</code> (one-shot agent), <code>pty</code> (interactive agent, waits for you). Plans are content-addressed and immutable.</p>
+    </label>
+    <div class="dialog-actions">
+      <button class="btn" type="button" id="run-example">Load example</button>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit">Create and start</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-oc-new" class="dialog" closedby="closerequest">
+  <form id="form-oc-new">
+    <div class="dialog-head">
+      <h2>New OpenCode chat</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <label class="field">
+      <span>Worktree or workspace</span>
+      <select name="worktreeId" id="oc-new-wt" required></select>
+    </label>
+    <label class="field">
+      <span>Title <span class="muted">(optional)</span></span>
+      <input name="title" placeholder="login fix" autocomplete="off" spellcheck="false" />
+    </label>
+    <label class="field">
+      <span>Agent <span class="muted">(optional)</span></span>
+      <input name="agent" placeholder="build" autocomplete="off" spellcheck="false" />
+    </label>
+    <p class="hint muted">OpenCode runs in the selected directory. Close the OpenCode TUI before using this chat; one session should have one active client.</p>
+    <div class="dialog-actions">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn primary" type="submit">Start chat</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm" class="dialog" closedby="closerequest">
+  <div class="dialog-head">
+    <h2 id="confirm-title">Confirm</h2>
+    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+  </div>
+  <p class="muted" id="confirm-text"></p>
+  <div class="dialog-actions">
+    <button class="btn" type="button" data-close>Cancel</button>
+    <button class="btn danger" type="button" id="confirm-ok">Confirm</button>
+  </div>
+</dialog>
+
+<div class="debug" id="debug" hidden>
+  <div class="debug-head">
+    <strong>debug</strong>
+    <code id="debug-version"></code>
+    <button class="btn ghost" id="debug-save" type="button">Save</button>
+    <button class="btn ghost" id="debug-copy" type="button">Copy</button>
+    <button class="btn ghost" id="debug-clear" type="button">Clear</button>
+    <button class="icon-btn" id="debug-close" type="button" aria-label="Close debug">×</button>
+  </div>
+  <ol class="debug-list" id="debug-list"></ol>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/vendor/xterm.js?v=2026-11-07.03" defer></script>
+<script src="/vendor/addon-fit.js?v=2026-11-07.03" defer></script>
+<script src="/vendor/qrcode.js?v=2026-11-07.03" defer></script>
+<script src="/app.js?v=2026-11-07.03" defer></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+// Release signing is optional and never committed. Put the keystore path and
+// passwords in android/keystore.properties (gitignored), or leave it absent to
+// build an unsigned release for inspection. Debug builds do not use this.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+// The version is not checked in. The name is the nearest tag (without its
+// `v`) and the code is the commit count, so a build from a tagged commit
+// reports that tag. The Makefile and the android workflow pass both
+// explicitly; these fallbacks keep a direct `gradlew` invocation honest.
+def gitValue = { String... args ->
+    try {
+        def process = new ProcessBuilder(['git'] + args.toList())
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        def text = process.inputStream.text.trim()
+        process.waitFor()
+        text
+    } catch (Exception ignored) {
+        ''
+    }
+}
+def described = gitValue('describe', '--tags', '--always', '--dirty')
+def defaultVersionName = described ? described.replaceFirst('^v', '') : '0.1.0-dev'
+def defaultVersionCode = gitValue('rev-list', '--count', 'HEAD') ?: '1'
+
+android {
+    namespace 'dev.darkfactory.mobile'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'dev.darkfactory.mobile'
+        minSdk 26
+        targetSdk 34
+        def resolvedCode = (findProperty('dfVersionCode') ?: defaultVersionCode).toString().toInteger()
+        def resolvedName = findProperty('dfVersionName') ?: defaultVersionName
+        versionCode resolvedCode
+        versionName resolvedName
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds false
+    }
+}
+
+// The daemon and the Android client render the same UI. Copy it at build time
+// instead of committing a second copy that can drift from web/.
+def webSource = rootProject.file('../web')
+def webGenerated = layout.buildDirectory.dir('generated/webAssets')
+def webDestination = layout.buildDirectory.dir('generated/webAssets/web')
+
+tasks.register('syncWebAssets', Sync) {
+    from(webSource) {
+        exclude 'embed.go'
+        exclude '**/.DS_Store'
+    }
+    into(webDestination)
+}
+
+android.sourceSets.main.assets.srcDirs += [webGenerated.get().asFile]
+tasks.named('preBuild').configure {
+    dependsOn 'syncWebAssets'
+}
