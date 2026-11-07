@@ -15,7 +15,7 @@ MAINTAINER ?= Wintoplay <winroom@gmail.com>
 # commit produce the same bytes (NF-REL-6). Commit time, not build time.
 EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
 
-.PHONY: all build install install-status install-restart update-source test race fuzz vet vuln fmt vendor run clean ui-check ui-gate check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run clientbench-build clientbench-check
+.PHONY: all build install install-status install-restart update-source test race fuzz vet vuln fmt vendor run clean ui-check ui-gate install-script-check check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run clientbench-build clientbench-check
 
 all: build
 
@@ -144,7 +144,7 @@ ui-check:
 		echo "ui-check: neither tsc nor bun found; skipped type check"; \
 	fi
 
-check: vet test race ui-check clientbench-check desktop-check
+check: vet test race ui-check clientbench-check install-script-check desktop-check
 
 # The UI gate drives the real page at desktop and phone widths. It needs the
 # browser/PTY harness (Playwright + Chromium), so it stays out of `make check`;
@@ -222,6 +222,9 @@ clientbench-check:
 	go test ./tools/clientbench
 	python3 tools/vendor-orca.py
 	node --test clients/terminal/mouse-click.test.mjs
+
+install-script-check:
+	./test/install-uninstall.sh
 
 fmt:
 	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')

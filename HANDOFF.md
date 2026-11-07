@@ -1,5 +1,21 @@
 # Current release handoff
 
+## Installer uninstall leak fixed in v0.1.0-rc.7 (2026-11-08)
+
+`v0.1.0-rc.6` shipped an `install.sh` whose `--uninstall` removed
+`~/.local/share/applications/darkfactory.desktop`, its icon and the user unit
+even when `--prefix` pointed at a disposable root: those paths come from
+`$HOME`/XDG, not `$PREFIX`. A probe uninstall did exactly that to the
+maintainer's desktop, which is why the app icon disappeared and the window fell
+back to its `dev.darkfactory.Desktop` app id.
+
+`v0.1.0-rc.7` removes the desktop entry, icon and unit only when `BINDIR` is the
+default user prefix or the unit's `ExecStart` names the binary being removed.
+`test/install-uninstall.sh` pins both directions and runs as
+`install-script-check` in `make check`. The desktop entry, icon and unit were
+already correct in the release, and no other artifact changed. The restored
+live launcher keeps `StartupWMClass=dev.darkfactory.Desktop`.
+
 ## Host-credential scope, public-source refusal, Ghostty capability (2026-11-07)
 
 **Installed and live on this host.** `make install-restart` at 2026-11-08

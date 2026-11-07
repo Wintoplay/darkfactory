@@ -122,12 +122,28 @@ ICON_FILE=$DATA_DIR/icons/hicolor/scalable/apps/darkfactory.svg
 
 if [ "$UNINSTALL" = 1 ]; then
 	say "Removing DarkFactory from $BINDIR"
-	if command -v systemctl >/dev/null 2>&1 && [ -f "$UNIT_FILE" ]; then
+	# The desktop entry, icon and user unit live under $HOME/XDG, not under
+	# $PREFIX. Removing them unconditionally used to delete the operator's real
+	# launcher when uninstalling a disposable --prefix install. Only remove
+	# them when they belong to this binary: the default user prefix, or a unit
+	# whose ExecStart names $BINDIR/darkfactory.
+	remove_desktop=0
+	if [ "$BINDIR" = "$HOME/.local/bin" ]; then
+		remove_desktop=1
+	elif [ -f "$UNIT_FILE" ] && grep -qxF "ExecStart=$BINDIR/darkfactory serve" "$UNIT_FILE"; then
+		remove_desktop=1
+	fi
+	if [ "$remove_desktop" = 1 ] && command -v systemctl >/dev/null 2>&1 && [ -f "$UNIT_FILE" ]; then
 		run systemctl --user disable --now darkfactory.service || true
 	fi
-	run rm -f "$BINDIR/darkfactory" "$UNIT_FILE" "$DESKTOP_FILE" "$ICON_FILE"
-	if command -v systemctl >/dev/null 2>&1; then
-		run systemctl --user daemon-reload || true
+	run rm -f "$BINDIR/darkfactory"
+	if [ "$remove_desktop" = 1 ]; then
+		run rm -f "$UNIT_FILE" "$DESKTOP_FILE" "$ICON_FILE"
+		if command -v systemctl >/dev/null 2>&1; then
+			run systemctl --user daemon-reload || true
+		fi
+	else
+		say "Kept $DESKTOP_FILE, $ICON_FILE and $UNIT_FILE (they belong to another install)."
 	fi
 	say "Kept: $CONFIG_DIR/darkfactory (token, policy) and ${XDG_STATE_HOME:-$HOME/.local/state}/darkfactory (state.db)."
 	say "Run 'darkfactory session-host --stop' before removing a running install."

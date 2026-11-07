@@ -14,7 +14,7 @@ request that others do not use the project to train AI models. This request is
 nonbinding and does not change the permissions granted by the MIT License.
 Third-party components retain their own licenses; see [third-party assets](third_party/README.md).
 
-**Status:** development. The first prerelease, `v0.1.0-rc.6`, is published with
+**Status:** development. The first prerelease, `v0.1.0-rc.7`, is published with
 signed build provenance; see [install](#install-linux). A real phone has paired
 over Tailscale, but full phone acceptance and an external security review remain
 open. See [the release handoff](HANDOFF.md) for tested revisions, known limits,
@@ -59,7 +59,7 @@ release. No browser/Wails performance winner has been established. See the
 
 ## Install (Linux)
 
-**The first tagged release is `v0.1.0-rc.6` (a prerelease).** The packaging
+**The first tagged release is `v0.1.0-rc.7` (a prerelease).** The packaging
 recipe (`make dist`) produces the artifact set described here, and the release
 workflow publishes it with GitHub artifact attestations. Clean install, upgrade,
 restart and a one-revision rollback were checked with isolated-root evidence kept
