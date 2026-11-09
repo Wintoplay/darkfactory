@@ -1,0 +1,68 @@
+version: 2
+
+# Security updates are enabled in the repository settings; this file adds
+# version updates. Minor and patch bumps arrive as one grouped pull request per
+# ecosystem so a slow week cannot turn into a review queue full of PRs. PRs are
+# never auto-merged: the gates in docs/dependency-policy.md still decide.
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+    groups:
+      go-patch-minor:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
+      go-major:
+        patterns: ["*"]
+        update-types: ["major"]
+
+  - package-ecosystem: "gomod"
+    directory: "/desktop"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+    groups:
+      desktop-patch-minor:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
+      desktop-major:
+        patterns: ["*"]
+        update-types: ["major"]
+
+  # AGP and Kotlin majors are migrations, not version edits: they change the
+  # Gradle wrapper, the SDK platform and Build-Tools together. They are handled
+  # deliberately per docs/dependency-policy.md, so Dependabot does not open a PR
+  # that cannot be green on its own.
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+    ignore:
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "org.jetbrains.kotlin:kotlin-gradle-plugin"
+        update-types: ["version-update:semver-major"]
+    groups:
+      android-patch-minor:
+        patterns: ["*"]
+        update-types: ["patch", "minor"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
