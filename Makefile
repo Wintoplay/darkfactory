@@ -241,10 +241,10 @@ desktop-check:
 ANDROID_HOME ?= $(HOME)/Android/Sdk
 ANDROID_ADB ?= $(ANDROID_HOME)/platform-tools/adb
 ANDROID_APK ?= android/app/build/outputs/apk/debug/app-debug.apk
-# The APK name is the nearest tag and the commit count, the same identity a
-# release archive carries. The versionCode is a checked-in high-water mark, not
-# a commit count: Android refuses a downgrade and a rewritten history once
-# shrank the count, which broke every update.
+# The APK name is the nearest tag, the same identity a release archive carries.
+# The versionCode is a checked-in high-water mark, not a commit count: Android
+# refuses a downgrade and a rewritten history once shrank the count, which
+# broke every update.
 ANDROID_VERSION_NAME ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
 ANDROID_VERSION_CODE ?= $(shell sed -n 's/^versionCode=//p' android/version.properties)
 
