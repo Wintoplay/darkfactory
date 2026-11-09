@@ -138,9 +138,11 @@ Or from the repository root:
 make android-build
 ```
 
-`versionName` and `versionCode` are not checked in: the build reads the nearest
-git tag (without its `v`) and the commit count. Override them with
-`-PdfVersionName=… -PdfVersionCode=…` when the defaults are not what you want.
+`versionName` is the nearest git tag (without its `v`). `versionCode` is a
+checked-in high-water mark in [`version.properties`](version.properties), not a
+commit count, because Android refuses to install a lower code and this
+repository's history is a curated export. Bump it before tagging a release.
+Override either with `-PdfVersionName=… -PdfVersionCode=…`.
 
 CI can build the same APK without a local toolchain: run the **android**
 workflow (Actions → android → Run workflow) and download the

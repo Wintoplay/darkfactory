@@ -131,6 +131,8 @@ release. Do not claim an installer or another platform from these checks.
 
 ## 6. Android artifact [host]
 
+- [ ] Bump `android/version.properties` (`versionCode`) above every published
+      APK. Android refuses a downgrade and the value is not derived from git.
 - [x] `android/gradlew -p android assembleDebug` with JDK 21 and
       Build-Tools 35.0.0.
 - [x] `android/gradlew -p android lintDebug`; no notification/foreground-service
