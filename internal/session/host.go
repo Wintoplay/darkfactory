@@ -146,12 +146,9 @@ func NewHostHandler(manager *Manager, shutdown func()) http.Handler {
 		meter.Run(r.Context(), slog.Default())
 		snapshot, chunks, cancel := sess.Subscribe()
 		defer cancel()
-		// The ring tail cannot carry an enable the app emitted once at startup
-		// and then painted past. The host owns the PTY and still tracks those
-		// modes, so attach carries them after the snapshot. No new frame kind:
-		// an older daemon already seeds its tracker from these bytes, so this
-		// stays wire-compatible.
-		snapshot = append(snapshot, sess.modes.Restore()...)
+		// Subscribe carries the ring tail followed by the input modes the host
+		// still tracks from the PTY. No new frame kind: an older daemon already
+		// seeds its tracker from these bytes, so this stays wire-compatible.
 		if err := writeFrame(w, frameSnapshot, snapshot); err != nil {
 			return
 		}

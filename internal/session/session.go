@@ -336,9 +336,7 @@ func (s *Session) readLoop(ptyFile *os.File) {
 		n, err := ptyFile.Read(buf)
 		if n > 0 {
 			chunk := append([]byte(nil), buf[:n]...)
-			s.ring.Write(chunk)
-			s.modes.Write(chunk)
-			s.broadcast(chunk)
+			s.writeChunk(chunk)
 		}
 		if err != nil {
 			return
@@ -401,9 +399,18 @@ func (s *Session) closeDone() {
 	s.doneOnce.Do(func() { close(s.done) })
 }
 
-func (s *Session) broadcast(chunk []byte) {
+// writeChunk records PTY output and fans it out under the lock Subscribe takes.
+// Splitting those steps let a chunk fall between an attaching reader's snapshot
+// and its registration, where neither saw it.
+func (s *Session) writeChunk(chunk []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ring.Write(chunk)
+	s.modes.Write(chunk)
+	s.broadcastLocked(chunk)
+}
+
+func (s *Session) broadcastLocked(chunk []byte) {
 	if s.status != model.SessionRunning {
 		return
 	}
@@ -555,9 +562,33 @@ func (s *Session) Done() <-chan struct{} {
 	return s.done
 }
 
+// Subscribe returns the ring tail, the input modes the PTY still tracks, and a
+// channel of later chunks. The snapshot and the registration share one lock
+// with the writer, so a chunk is in exactly one of them. Taking them in two
+// steps dropped a chunk written in between: a prompt painted once at startup
+// disappeared for good, and a CI attach test saw an empty screen.
+//
+// The input modes travel with the snapshot because the ring tail cannot carry
+// an enable the app emitted once and then painted past.
 func (s *Session) Subscribe() ([]byte, <-chan []byte, func()) {
+	ch := make(chan []byte, 256)
+	s.mu.Lock()
 	snapshot := s.ring.Snapshot()
-	ch, cancel := s.subscribeChan()
+	snapshot = append(snapshot, s.modes.Restore()...)
+	if s.status == model.SessionRunning && s.subs != nil {
+		s.subs[ch] = struct{}{}
+	} else {
+		close(ch)
+	}
+	s.mu.Unlock()
+	cancel := func() {
+		s.mu.Lock()
+		if _, ok := s.subs[ch]; ok {
+			delete(s.subs, ch)
+			close(ch)
+		}
+		s.mu.Unlock()
+	}
 	return snapshot, ch, cancel
 }
 
@@ -575,11 +606,10 @@ const browserDetachedNotice = "\r\n[detached: another browser attached]\r\n"
 // Only one browser terminal may own a session at a time: a new attach detaches
 // the previous stream instead of letting both resize the same PTY.
 func (s *Session) SubscribeBrowser() ([]byte, bool, <-chan []byte, func()) {
-	snapshot, complete := s.ring.SnapshotFromStart()
-	replay, redraw := browserSnapshot(snapshot, complete)
-	replay = append(replay, s.modes.Restore()...)
 	ch := make(chan []byte, 256)
 	s.mu.Lock()
+	snapshot, complete := s.ring.SnapshotFromStart()
+	modeRestore := s.modes.Restore()
 	if s.status == model.SessionRunning && s.subs != nil {
 		for old := range s.subs {
 			delete(s.subs, old)
@@ -594,6 +624,10 @@ func (s *Session) SubscribeBrowser() ([]byte, bool, <-chan []byte, func()) {
 		close(ch)
 	}
 	s.mu.Unlock()
+	// The replay is a pure function of the snapshot, so it runs after the lock:
+	// a multi-megabyte ring scan must not stall the PTY reader.
+	replay, redraw := browserSnapshot(snapshot, complete)
+	replay = append(replay, modeRestore...)
 	cancel := func() {
 		s.mu.Lock()
 		if _, ok := s.subs[ch]; ok {
@@ -603,26 +637,6 @@ func (s *Session) SubscribeBrowser() ([]byte, bool, <-chan []byte, func()) {
 		s.mu.Unlock()
 	}
 	return replay, redraw, ch, cancel
-}
-
-func (s *Session) subscribeChan() (<-chan []byte, func()) {
-	ch := make(chan []byte, 256)
-	s.mu.Lock()
-	if s.status == model.SessionRunning && s.subs != nil {
-		s.subs[ch] = struct{}{}
-	} else {
-		close(ch)
-	}
-	s.mu.Unlock()
-	cancel := func() {
-		s.mu.Lock()
-		if _, ok := s.subs[ch]; ok {
-			delete(s.subs, ch)
-			close(ch)
-		}
-		s.mu.Unlock()
-	}
-	return ch, cancel
 }
 
 // Stop escalates SIGTERM to SIGKILL for the whole process group, then waits.

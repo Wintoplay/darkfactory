@@ -202,9 +202,7 @@ func (s *Session) remoteLoop(stream io.ReadCloser) {
 			if len(payload) == 0 {
 				continue
 			}
-			s.ring.Write(payload)
-			s.modes.Write(payload)
-			s.broadcast(payload)
+			s.writeChunk(payload)
 		case frameExit:
 			var item model.Session
 			if err := json.Unmarshal(payload, &item); err != nil {
@@ -253,9 +251,11 @@ func (s *Session) reattachRemote() (io.ReadCloser, bool) {
 		s.markLost("host_lost")
 		return nil, false
 	}
+	s.mu.Lock()
 	s.ring.Reset(snapshot)
 	s.modes.Write(snapshot)
-	s.broadcast(snapshot)
+	s.broadcastLocked(snapshot)
+	s.mu.Unlock()
 	s.remote.setStream(stream)
 	return stream, true
 }

@@ -33,6 +33,23 @@ host because `ocamlyacc` is absent; CI runs it. No emulator or physical-phone
 run covers `targetSdk 36` yet, so predictive back and edge-to-edge remain open
 for Android acceptance.
 
+## Attach seam race (2026-11-09)
+
+CI failed once in `TestHostSurvivesDaemonDetach`: the host held `host-marker`,
+the daemon's attach snapshot stayed empty for the 3 s deadline. The cause was
+`Session.Subscribe`: it copied the ring and registered the chunk channel in two
+separate lock acquisitions, while the reader wrote the ring and fanned out
+separately. A chunk written between them was in neither, so a prompt printed
+once at startup vanished; the mirroring order could also deliver it twice.
+`writeChunk` now writes the ring, the input modes and the fan-out under the
+same lock `Subscribe` takes for snapshot plus registration, and the browser's
+exclusive attach does the same. `TestSubscribeKeepsTheBytesAtTheSeam` attaches
+200 times while a numbered token stream runs and requires the joined snapshot
+and first chunk to be consecutive; with a 2 ms scheduling gap put back into the
+old shape it fails on the first iteration. A full 4 MB ring attach costs ~2.2 ms
+and blocks the reader for that copy, once per attach. SS-4 (`snapshot + seq` on
+the wire) remains open.
+
 ## Session stop verdict race (2026-11-09)
 
 CI exposed a rare `Stop` misreport: closing the PTY master hangs up the

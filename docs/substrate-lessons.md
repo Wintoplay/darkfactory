@@ -58,6 +58,15 @@ This document states what those clients must preserve.
 8. Input and output are streams, not one request per key or network chunk.
    Coalesce per frame and keep at most one input request in flight; a remote
    round trip per wheel notch feels broken even when every byte arrives.
+9. A backlog and a live subscription are one decision. A reader attaching to a
+   session takes the ring snapshot and registers for later chunks under the
+   same lock the writer uses for both. Split into two steps, a chunk written in
+   between lands in neither (and, depending on the ordering, can also be sent
+   twice). Losing it is invisible in a chatty stream and permanent in a quiet
+   one: a prompt or `host-marker` printed once disappears and the client shows
+   an empty screen until the next byte. Test the seam, not the steady state:
+   attach repeatedly while a known byte sequence is flowing and require the
+   concatenated snapshot and first chunk to be gap- and duplicate-free.
    The same applies to the host-to-daemon mirror: write queued output in a
    bounded batch and flush once per batch. A fast PTY that writes line by line
    otherwise becomes one frame, one flush and one emulator write per line.

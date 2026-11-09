@@ -763,6 +763,9 @@ not claim to contain a same-uid agent.
 - Replanning is only possible at step boundaries.
 - Terminal attach uses a bounded shell tail or a SIGWINCH redraw for a TUI, not
   `snapshot + seq`; reconnects can still duplicate bytes until SS-4 lands.
+  Within one process the backlog and the live stream join atomically — the
+  snapshot and the registration share the writer's lock — so a fresh attach
+  neither drops nor repeats the chunk at the seam.
 - Attach restores the tracked input modes, not the whole terminal state. Cursor
   visibility, the alternate screen and insert mode are not replayed. The host
   tracks modes from the PTY and carries them on attach, so ring eviction no

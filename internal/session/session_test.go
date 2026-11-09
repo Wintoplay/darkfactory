@@ -425,7 +425,7 @@ func TestSubscribeBrowserDetachesPrevious(t *testing.T) {
 		t.Fatal("first browser stream did not close")
 	}
 
-	sess.broadcast([]byte("still-live"))
+	sess.writeChunk([]byte("still-live"))
 	select {
 	case got := <-second:
 		if string(got) != "still-live" {

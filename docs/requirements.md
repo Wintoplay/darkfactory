@@ -196,7 +196,10 @@ once a body byte arrives: the page never read `X-DF-Redraw`, never asked for
 the repaint, and an idle TUI stayed black until it wrote on its own. Every
 attach now opens with one SGR reset, a terminal no-op, so the headers are
 readable immediately (SS-16). SS-4's `snapshot + seq`
-is still open. The current browser attach is exclusive: a new attach detaches
+is still open: the in-process snapshot and subscription now join atomically, so
+an attach no longer loses or repeats the chunk at the seam, but the wire still
+has no sequence number and a reconnect can repeat bytes. The current browser
+attach is exclusive: a new attach detaches
 the previous stream with a notice, because one PTY has one size; SS-15's
 multi-stream cap is target-state. SS-13 is partly implemented: the client drops
 output-driven palette and colour sets, but xterm.js still parses the rest of the
