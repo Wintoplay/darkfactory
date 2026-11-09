@@ -1,5 +1,29 @@
 # Current release handoff
 
+## v0.1.0-rc.9 (2026-11-09)
+
+Tag `v0.1.0-rc.9`. The wire protocol is unchanged from rc.8: a daemon and a
+phone client from either release interoperate, and the APK (`versionCode 162`,
+same signing certificate) installs over rc.8 without re-pairing.
+
+Artifacts: Linux amd64/arm64 tarballs and `.deb` packages plus `SHA256SUMS`,
+built by the release workflow from the tag with Sigstore attestations; the
+signed Android APK and its `.sha256` are attached to the release. Local
+`make dist VERSION=0.1.0-rc.9` and `sha256sum -c` passed; the release APK is
+`26b728ab3a9c9e5e332b4fee6b41587181a30f98ee853ce67a9bdac932c1fdb2` (certificate
+`a671f0ba…`, `versionName 0.1.0-rc.9`, `targetSdk 36`).
+
+Gates at the tag: `make check` exit 0; `make dist` plus checksum verification;
+`lintDebug`, `assembleDebug`, signed `assembleRelease`, `android-pq-check` and
+`android-pq-live`. Evidence is in `test/artifacts/release-2026-11-09/`
+(untracked).
+
+Open: `targetSdk 36` runtime behavior has no device or API 36 emulator run (the
+CI emulator is API 34); real-phone Tailscale and notification acceptance remain
+open; the native Wails window checks predate this change; SS-4
+(`snapshot + seq`) remains open. This release work did not upgrade the
+operator's installed daemon, shell or session host.
+
 ## Working rule from the last refresh
 
 Do not chase CI failures one push at a time. Batch fixes, run targeted package
