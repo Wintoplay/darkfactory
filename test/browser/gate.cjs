@@ -392,7 +392,12 @@ async function checkAttention(page, viewport) {
   // Dismissing is the only way it goes away.
   for (let guard = 0; guard < 60; guard++) {
     if (!(await page.locator('#attention-count').isVisible())) break
-    await page.click('#btn-attention')
+    // The list can still be open from the previous dismiss. Clicking the bell
+    // again toggles it closed, and the wait below then times out on a slow
+    // runner even though the UI is correct.
+    if (!(await page.locator('#attention-pop:not([hidden])').isVisible())) {
+      await page.click('#btn-attention')
+    }
     await page.waitForSelector('#attention-pop:not([hidden])', { timeout: 5000 })
     const dismiss = page.locator('#attention-list .attention-dismiss').first()
     if (!(await dismiss.count())) {
