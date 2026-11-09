@@ -663,7 +663,14 @@ func (s *Session) Stop(reason string) StopResult {
 			return StopUnverifiable
 		}
 	} else if !signalGroup(pid, pgid, syscall.SIGTERM) {
-		return StopAlreadyExited
+		// Closing the master above hangs up the terminal, and SIGHUP can kill
+		// the process group before SIGTERM is sent. The process was alive when
+		// this call started, so this is still a stop we caused rather than one
+		// that had already happened. Report the wait, not ESRCH.
+		if waitDone(done, 2*time.Second) {
+			return StopStopped
+		}
+		return StopUnverifiable
 	}
 	if waitDone(done, 2*time.Second) {
 		return StopStopped
