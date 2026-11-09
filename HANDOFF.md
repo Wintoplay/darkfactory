@@ -1,5 +1,12 @@
 # Current release handoff
 
+## Working rule from the last refresh
+
+Do not chase CI failures one push at a time. Batch fixes, run targeted package
+tests while iterating, and use `make check` once before pushing. The cost
+ledger and the classification rule for flakes are in
+`docs/reviews/ci-chase-2026-11-09.md`.
+
 ## Dependency refresh and Dependabot (2026-11-09)
 
 Dependabot now watches both Go modules, the Android Gradle project and GitHub
