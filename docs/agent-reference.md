@@ -59,8 +59,8 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   and process state.
 - Dependencies are vendored and tracked: after a `go.mod` change run
   `go mod tidy && go mod vendor`, or Go reports inconsistent vendoring.
-- Go 1.27+ (`go.mod` `1.27.0`, toolchain 1.27.3). Never downgrade the `go`
-  directive.
+- Go 1.27+ (`go.mod` `1.27.3`, the smallest release with every stdlib
+  advisory fixed). Never downgrade the `go` directive.
 
 ## Where things are
 
