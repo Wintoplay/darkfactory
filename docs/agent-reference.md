@@ -44,6 +44,10 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   `bun check` on Bun 1.4+. `jsconfig.json` enables `checkJs`; `web/` stays plain
   JS today. Future frontend build tools must not become daemon runtime dependencies.
 - `make run` → `go run ./cmd/darkfactory serve`.
+- `make upgrade` → `install-restart` + `desktop-upgrade`: swaps the installed
+  daemon, rebuilds and installs the desktop shell when the native SDK is
+  present, and reopens an open window. The session host is not restarted.
+  `DF_UPGRADE_NO_WINDOW=1` keeps the current window.
 - `sh test/android/check-fingerprint.sh` compiles `HostFingerprint` and its JVM
   test with `javac`/`java`; it pins DP-19 (the displayed fingerprint hashes the
   received host key) without an emulator. `make android-pq-check` extends the

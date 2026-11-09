@@ -73,7 +73,10 @@ predated `desktop/cmd/darkfactory-desktop/main.go`. Host keys and pins survived:
 
 Open at release time: no physical-phone run of the v2 client, no external
 cryptographic audit, no branch protection requiring the new security jobs, and
-no evidence for rolling a database forward to an older binary. The install
+no evidence for rolling a database forward to an older binary. Local upgrades
+are one command: `make upgrade` swaps the daemon, rebuilds and installs the
+desktop shell, and reopens an open window; the session host is untouched. The
+README is now a front page, with the detailed behaviour in `docs/usage.md`. The install
 pipeline itself was fixed before the tag: `install-status` and
 `install-restart` treated a zombie `serve` as running, which aborted the swap
 and left the daemon down; they now read `/proc/<pid>/stat` and treat `Z` as

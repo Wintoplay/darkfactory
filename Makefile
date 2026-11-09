@@ -15,7 +15,7 @@ MAINTAINER ?= Wintoplay <winroom@gmail.com>
 # commit produce the same bytes (NF-REL-6). Commit time, not build time.
 EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
 
-.PHONY: all build install install-status install-restart update-source test race fuzz security-check protocol-verify vet vuln fmt vendor run clean ui-check ui-gate install-script-check check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run android-pq-check android-pq-live clientbench-build clientbench-check
+.PHONY: all build install install-status install-restart upgrade desktop-upgrade update-source test race fuzz security-check protocol-verify vet vuln fmt vendor run clean ui-check ui-gate install-script-check check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run android-pq-check android-pq-live clientbench-build clientbench-check
 
 all: build
 
@@ -76,6 +76,35 @@ install-status:
 	fi
 
 update-source: install-restart
+
+# One command for "I pulled new code": swap the daemon, the desktop shell and the
+# open window. Depend on install-restart so the window reopens against the new
+# daemon; the session host is never restarted, so hosted PTYs survive.
+upgrade: install-restart desktop-upgrade
+	@echo "upgrade complete: $(VERSION) ($(COMMIT))"
+
+desktop-upgrade:
+	@if $(MAKE) --no-print-directory desktop-preflight >/dev/null 2>&1; then \
+		$(MAKE) --no-print-directory desktop-build; \
+		mkdir -p "$(BINDIR)"; \
+		install -m 0755 "$(BIN)-desktop" "$(BINDIR)/darkfactory-desktop"; \
+		echo "installed $(BINDIR)/darkfactory-desktop"; \
+		if [ -z "$${DF_UPGRADE_NO_WINDOW:-}" ] && \
+		   [ -n "$${WAYLAND_DISPLAY:-}$${DISPLAY:-}" ] && \
+		   pgrep -f "^$(BINDIR)/darkfactory-desktop " >/dev/null 2>&1; then \
+			pkill -f "^$(BINDIR)/darkfactory-desktop " || true; \
+			for i in $$(seq 1 40); do \
+				pgrep -f "^$(BINDIR)/darkfactory-desktop " >/dev/null 2>&1 || break; \
+				sleep 0.25; \
+			done; \
+			mkdir -p "$(DARKFACTORY_STATE)"; \
+			setsid nohup "$(DARKFACTORY)" launch --desktop \
+				>> "$(DARKFACTORY_STATE)/launch.log" 2>&1 < /dev/null & \
+			echo "reopened the desktop window"; \
+		fi; \
+	else \
+		echo "upgrade: native desktop SDK missing; skipped the desktop shell"; \
+	fi
 
 install-restart:
 	@if command -v systemctl >/dev/null 2>&1 && \

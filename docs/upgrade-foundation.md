@@ -1,10 +1,12 @@
 # Upgrade foundation
 
 Status: design for a future, explicitly invoked release upgrade. The checkout
-has `make update-source` for local builds, but no release updater, signed
-metadata, automatic check, or rollback transaction is implemented here. The
-current release and evidence are in [HANDOFF.md](../HANDOFF.md). This proposal
-does not authorize a restart, installation, network request, or publication.
+has `make upgrade` (daemon, desktop shell and window, one command) and the
+lower-level `make install`/`install-restart` for local builds, but no release
+updater, signed metadata, automatic check, or rollback transaction is
+implemented here. The current release and evidence are in
+[HANDOFF.md](../HANDOFF.md). This proposal does not authorize a restart,
+installation, network request, or publication.
 
 ## Goal and boundaries
 
