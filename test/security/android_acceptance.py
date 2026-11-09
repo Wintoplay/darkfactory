@@ -74,7 +74,15 @@ def main():
                 except Exception:
                     pass
                 time.sleep(0.3)
-            raise AssertionError(message)
+            # A bare "not shown" tells the next person nothing about whether the
+            # app rejected the host, stalled on crypto, or crashed. Print what
+            # the user would have seen.
+            try:
+                visible = sorted({node.attrib.get('text', '').strip() for node in nodes()})
+                visible = [text for text in visible if text]
+            except Exception as error:  # noqa: BLE001 - diagnostics must not mask the failure
+                visible = [f'<could not read the window: {error}>']
+            raise AssertionError(f'{message}\nVisible UI: {visible}')
 
         def nodes():
             adb('shell', 'uiautomator', 'dump', '/sdcard/df-security.xml')
