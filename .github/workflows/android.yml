@@ -39,7 +39,7 @@ jobs:
           echo "ANDROID_VERSION_CODE=$code" >> "$GITHUB_ENV"
           echo "APK version: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
