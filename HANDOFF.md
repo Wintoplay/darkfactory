@@ -2,8 +2,9 @@
 
 ## Hybrid native transport hardening (2026-11-09)
 
-The working tree closes the findings from the hybrid E2EE review. It is not
-installed on the operator stack. The daemon and updated Android APK must ship
+The working tree closes the findings from the hybrid E2EE review. It is
+released as `v0.1.0-rc.8` and installed on the operator stack; the rc.8 section
+below records that upgrade. The daemon and updated Android APK must ship
 together; this revision changes the unreleased v2 pairing and completion wire.
 The minimum suite now defaults to 2. Explicit `--e2ee-min-suite=1` retains legacy
 compatibility and its weaker guarantees. New Android pairing requires a valid
@@ -47,11 +48,36 @@ side channels, concurrency, expiry, persistent replay, or the algorithms'
 computational security. See `tools/protocolverify/README.md`.
 
 Validation and build provenance are in
-`test/artifacts/security-hardening-2026-11-09/REPORT.md`. The operator daemon,
-desktop, and session host were not installed, restarted, or used for acceptance.
-No physical-phone run or external cryptographic audit is claimed. Static host
-keys still provide no forward secrecy against later host-key theft; private
-identity material remains in `state.db`, and the bundle trust anchor is P-256.
+`test/artifacts/security-hardening-2026-11-09/REPORT.md`. The rc.8 section below
+records the operator upgrade that followed. No physical-phone run or external
+cryptographic audit is claimed. Static host keys still provide no forward
+secrecy against later host-key theft; private identity material remains in
+`state.db`, and the bundle trust anchor is P-256.
+
+## v0.1.0-rc.8: hybrid E2EE released, operator stack upgraded (2026-11-09)
+
+`v0.1.0-rc.8` is the first public release carrying the hybrid transport. The
+Linux archives are the CI `make dist` build; the signed APK was built from the
+same tag and attached with its `.sha256`. The daemon and APK must be installed
+together because the v2 pairing and completion wire changed; the daemon refuses
+legacy v1 rows by default, so a phone still on the rc.7 APK cannot connect
+until it installs this APK and pairs again.
+
+Operator upgrade, same day: `make install-restart` replaced `serve` with
+`0.1.0-dev (v0.1.0-rc.7-3-g2980c63)` and the session host was never restarted,
+so all five running sessions kept their PTYs. The desktop shell was rebuilt
+from this tree, installed and relaunched; the previously installed shell
+predated `desktop/cmd/darkfactory-desktop/main.go`. Host keys and pins survived:
+`/api/v1/e2ee/host-key` now advertises `maxVersion: 2`, suite
+`x25519-mlkem768-v1`, and a signed bundle.
+
+Open at release time: no physical-phone run of the v2 client, no external
+cryptographic audit, no branch protection requiring the new security jobs, and
+no evidence for rolling a database forward to an older binary. The install
+pipeline itself was fixed before the tag: `install-status` and
+`install-restart` treated a zombie `serve` as running, which aborted the swap
+and left the daemon down; they now read `/proc/<pid>/stat` and treat `Z` as
+exited.
 
 ## App-menu entry prefers the native shell again (2026-11-08)
 
