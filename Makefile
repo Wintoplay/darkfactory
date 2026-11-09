@@ -46,14 +46,20 @@ install: build
 	@$(MAKE) --no-print-directory install-status
 
 install-status:
-	@want="$(VERSION) ($(COMMIT))"; \
+	@df_alive() { \
+		kill -0 "$$1" 2>/dev/null || return 1; \
+		s=$$(cat "/proc/$$1/stat" 2>/dev/null) || return 0; \
+		s=$${s##*) }; \
+		[ "$${s%% *}" != Z ]; \
+	}; \
+	want="$(VERSION) ($(COMMIT))"; \
 	got="$$($(DARKFACTORY) version 2>/dev/null || echo 'not installed')"; \
 	if [ "$$got" != "$$want" ]; then \
 		echo "installed binary is '$$got'; this tree builds '$$want'"; \
 		echo "run: make install-restart"; \
 	fi; \
 	pid=$$(sed -n '1p' "$(DARKFACTORY_STATE)/serve.pid" 2>/dev/null || true); \
-	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+	if [ -n "$$pid" ] && df_alive "$$pid"; then \
 		exe=$$(readlink "/proc/$$pid/exe" 2>/dev/null || true); \
 		case "$$exe" in \
 			"$(DARKFACTORY)") echo "daemon pid $$pid is running the installed build ($$got)";; \
@@ -79,14 +85,20 @@ install-restart:
 	fi
 	@$(MAKE) --no-print-directory install
 	@set -eu; \
+	df_alive() { \
+		kill -0 "$$1" 2>/dev/null || return 1; \
+		s=$$(cat "/proc/$$1/stat" 2>/dev/null) || return 0; \
+		s=$${s##*) }; \
+		[ "$${s%% *}" != Z ]; \
+	}; \
 	pid=$$(sed -n '1p' "$(DARKFACTORY_STATE)/serve.pid" 2>/dev/null || true); \
-	if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+	if [ -n "$$pid" ] && df_alive "$$pid"; then \
 		case "$$(readlink "/proc/$$pid/exe" 2>/dev/null || true)" in \
 			"$(DARKFACTORY)"|"$(DARKFACTORY) (deleted)") kill "$$pid" || exit 1;; \
 			*) echo "pid file points at a different program; not stopping it" >&2; exit 1;; \
 		esac; \
-		for i in $$(seq 1 40); do kill -0 "$$pid" 2>/dev/null || break; sleep 0.25; done; \
-		if kill -0 "$$pid" 2>/dev/null; then \
+		for i in $$(seq 1 40); do df_alive "$$pid" || break; sleep 0.25; done; \
+		if df_alive "$$pid"; then \
 			echo "daemon pid $$pid did not exit; refusing to start another daemon" >&2; exit 1; \
 		fi; \
 	fi; \
@@ -94,7 +106,7 @@ install-restart:
 	setsid nohup "$(DARKFACTORY)" serve >> "$(DARKFACTORY_STATE)/serve.log" 2>&1 < /dev/null & \
 	for i in $$(seq 1 40); do \
 		new=$$(sed -n '1p' "$(DARKFACTORY_STATE)/serve.pid" 2>/dev/null || true); \
-		if [ -n "$$new" ] && [ "$$new" != "$$pid" ] && kill -0 "$$new" 2>/dev/null; then \
+		if [ -n "$$new" ] && [ "$$new" != "$$pid" ] && df_alive "$$new"; then \
 			echo "daemon process started (pid $$new); check the app and $(DARKFACTORY_STATE)/serve.log for readiness"; exit 0; \
 		fi; \
 		sleep 0.25; \
