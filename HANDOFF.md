@@ -33,6 +33,17 @@ host because `ocamlyacc` is absent; CI runs it. No emulator or physical-phone
 run covers `targetSdk 36` yet, so predictive back and edge-to-edge remain open
 for Android acceptance.
 
+## Session stop verdict race (2026-11-09)
+
+CI exposed a rare `Stop` misreport: closing the PTY master hangs up the
+terminal, and SIGHUP can kill the process group before SIGTERM is sent, so
+`signalGroup` returned ESRCH and `Stop` answered `already_exited` for a session
+it had just terminated. `Stop` now treats a group that disappeared after the
+call saw it alive as a stop it caused, and waits for the done channel; a 3000×
+race run of `TestSessionStopRecordsIdentity` is green. The verdict contract is
+unchanged: `already_exited` still means the session was not running when `Stop`
+started.
+
 ## Hybrid native transport hardening (2026-11-09)
 
 The working tree closes the findings from the hybrid E2EE review. It is
