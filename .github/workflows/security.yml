@@ -21,12 +21,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
       - name: Android SDK
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;35.0.0" "system-images;android-34;google_apis;x86_64"'
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" \
+            "system-images;android-34;google_apis;x86_64"
       - name: compile and lint the production client
         run: ./android/gradlew -p android --no-daemon lintDebug assembleDebug assembleDebugAndroidTest
       - name: resolved Android runtime advisories

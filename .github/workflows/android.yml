@@ -26,14 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # versionName/versionCode come from the nearest tag and the commit
-          # count; a shallow clone would report neither.
+          # versionName comes from the nearest tag; a shallow clone would not
+          # see it. versionCode is the checked-in high-water mark.
           fetch-depth: 0
 
-      - name: version from git
+      - name: version
         run: |
           name=$(git describe --tags --always --dirty | sed 's/^v//')
-          code=$(git rev-list --count HEAD)
+          code=$(sed -n 's/^versionCode=//p' android/version.properties)
+          test -n "$code" || { echo "android/version.properties has no versionCode" >&2; exit 1; }
           echo "ANDROID_VERSION_NAME=$name" >> "$GITHUB_ENV"
           echo "ANDROID_VERSION_CODE=$code" >> "$GITHUB_ENV"
           echo "APK version: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
@@ -42,6 +43,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+
+      # Caches ~/.gradle, including the wrapper distribution. Without it every
+      # run re-downloads Gradle from GitHub release assets, which has produced
+      # transient 504s.
+      - uses: gradle/actions/setup-gradle@v6
 
       # GitHub's Ubuntu image ships the Android SDK; name it explicitly so the
       # build does not depend on a Gradle guess. Fail loudly if it is absent.
@@ -55,6 +61,11 @@ jobs:
           test -n "${ANDROID_HOME:-}" || { echo "no Android SDK on this runner" >&2; exit 1; }
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms"
+
+      - name: Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0"
 
       - name: restore the release keystore
         env:
