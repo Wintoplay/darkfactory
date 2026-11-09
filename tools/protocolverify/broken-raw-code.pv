@@ -1,0 +1,6 @@
+(* Negative control: reproduces the pre-fix raw-code-on-network design. *)
+set ignoreTypes = false.
+free net: channel.
+free pairCode: bitstring [private].
+query attacker(pairCode).
+process out(net, pairCode)

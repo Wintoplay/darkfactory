@@ -85,7 +85,15 @@ class NotificationService : Service() {
                 JSONObject()
                     .put("id", 0)
                     .put("title", "Pairing expired")
-                    .put("body", "This device was revoked. Open DarkFactory and pair again.")
+                    .put("body", "This device was signed out. Open DarkFactory, forget the host, and pair again.")
+            )
+            stopSelf()
+        } catch (_: SuiteDowngradeException) {
+            postEvent(
+                JSONObject()
+                    .put("id", 0)
+                    .put("title", "Update DarkFactory")
+                    .put("body", "This host requires hybrid encryption. Update DarkFactory, forget the host, and pair again.")
             )
             stopSelf()
         } catch (error: Exception) {
@@ -147,16 +155,9 @@ class NotificationService : Service() {
     }
 
     private fun fetch(connection: TokenStore.Connection, after: Long, baseline: Boolean): JSONObject {
-        val cipher = E2EE(
-            clientPrivate = E2EE.privateKey(connection.clientPrivateKey),
-            hostPublic = E2EE.publicKey(connection.hostPublicKey),
-            clientPublicKeyB64 = connection.clientPublicKey,
-            hostPublicKeyB64 = connection.hostPublicKey,
-            deviceId = connection.deviceId,
-            token = connection.token
-        )
+        val cipher = E2EE.from(connection)
         val path = if (baseline) "/api/v1/notifications" else "/api/v1/notifications?after=$after"
-        val (envelope, requestId) = cipher.sealRequest(
+        val request = cipher.sealRequest(
             "GET",
             path,
             mapOf("accept" to "application/json"),
@@ -175,13 +176,21 @@ class NotificationService : Service() {
             http.setRequestProperty("Accept", "application/x-df-e2ee")
             http.setRequestProperty("X-DF-E2EE", "1")
             http.setRequestProperty("User-Agent", "DarkFactory-Android/0.1")
-            val encoded = envelope.toByteArray(StandardCharsets.UTF_8)
+            val encoded = request.envelope.toByteArray(StandardCharsets.UTF_8)
             http.doOutput = true
             http.setFixedLengthStreamingMode(encoded.size)
             http.outputStream.use { upstream -> upstream.write(encoded) }
 
             val status = http.responseCode
             if (status == 401) throw RevokedException()
+            if (status == 403) {
+                val detail = try {
+                    readErrorBody(http.errorStream)
+                } catch (_: Exception) {
+                    ""
+                }
+                if (detail.contains("e2ee_suite_downgrade")) throw SuiteDowngradeException()
+            }
             if (status != 200) throw IOException("encrypted request returned HTTP $status")
             if (!http.contentType.orEmpty().startsWith("application/x-df-e2ee") &&
                 !http.contentType.orEmpty().startsWith("application/octet-stream")
@@ -190,22 +199,28 @@ class NotificationService : Service() {
             }
 
             val input = http.inputStream
-            val firstLength = readFrameLength(input) ?: throw IOException("empty encrypted response")
-            if (firstLength < 28) throw IOException("invalid encrypted frame")
-            val head = JSONObject(
-                String(cipher.openFrame(readExactly(input, firstLength), requestId, 0), StandardCharsets.UTF_8)
-            )
-            val inner = head.optInt("status", 500)
-            if (inner != 200) throw IOException("daemon returned HTTP $inner")
-
             val body = ByteArrayOutputStream()
-            var frameIndex = 1
-            while (true) {
-                val length = readFrameLength(input) ?: break
-                if (length < 28) throw IOException("invalid encrypted frame")
-                body.write(cipher.openFrame(readExactly(input, length), requestId, frameIndex))
-                frameIndex++
-            }
+            EncryptedResponseReader.read(
+                input,
+                object : EncryptedResponseReader.Opener {
+                    override fun openData(frame: ByteArray, index: Int): ByteArray = request.openFrame(frame, index)
+                    override fun openEnd(frame: ByteArray, index: Int): ByteArray? = request.openEndFrame(frame, index)
+                },
+                object : EncryptedResponseReader.Listener {
+                    override fun onHead(plain: ByteArray) {
+                        val head = JSONObject(String(plain, StandardCharsets.UTF_8))
+                        val inner = head.optInt("status", 500)
+                        if (inner != 200) throw IOException("daemon returned HTTP $inner")
+                    }
+
+                    override fun onBody(plain: ByteArray) {
+                        body.write(plain)
+                    }
+                },
+                MAX_NOTIFICATION_FRAME,
+                MAX_NOTIFICATION_BODY,
+                request.hasAuthenticatedEndMarker
+            )
             return JSONObject(String(body.toByteArray(), StandardCharsets.UTF_8))
         } finally {
             http?.disconnect()
@@ -339,38 +354,28 @@ class NotificationService : Service() {
         return if (cleaned.length > 500) cleaned.take(500) + "…" else cleaned
     }
 
-    private fun readFrameLength(input: InputStream): Int? {
-        val first = input.read()
-        if (first == -1) return null
-        val raw = ByteArray(4)
-        raw[0] = first.toByte()
-        readExactlyInto(input, raw, 1, 3)
-        return ((raw[0].toInt() and 0xff) shl 24) or
-            ((raw[1].toInt() and 0xff) shl 16) or
-            ((raw[2].toInt() and 0xff) shl 8) or
-            (raw[3].toInt() and 0xff)
-    }
-
-    private fun readExactly(input: InputStream, length: Int): ByteArray {
-        val raw = ByteArray(length)
-        readExactlyInto(input, raw, 0, length)
-        return raw
-    }
-
-    private fun readExactlyInto(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
-        var at = offset
-        var left = length
-        while (left > 0) {
-            val read = input.read(buffer, at, left)
-            if (read < 0) throw IOException("encrypted frame ended early")
-            at += read
-            left -= read
+    /** Reads a refusal body for its error code; never trusted for content. */
+    private fun readErrorBody(stream: InputStream?): String {
+        if (stream == null) return ""
+        stream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(4096)
+            while (output.size() < 64 * 1024) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                output.write(buffer, 0, read)
+            }
+            return String(output.toByteArray(), StandardCharsets.UTF_8)
         }
     }
 
     private class RevokedException : IOException("device revoked")
 
+    private class SuiteDowngradeException : IOException("host requires hybrid encryption")
+
     companion object {
+        private const val MAX_NOTIFICATION_FRAME = 1024 * 1024
+        private const val MAX_NOTIFICATION_BODY = 4L * 1024 * 1024
         private const val ACTION_STOP = "dev.darkfactory.mobile.STOP_NOTIFICATIONS"
         private const val CHANNEL_SERVICE = "darkfactory-service"
         private const val CHANNEL_ATTENTION = "darkfactory-attention"

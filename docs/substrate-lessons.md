@@ -123,6 +123,17 @@ This document states what those clients must preserve.
     protocols, answers with that envelope; a 5xx body says only that it failed,
     and the detail stays in the log. A browser client renders `detail`, then
     `hint`, then `code`; it never prints the raw body.
+17. A crypto format is a byte contract, and a second implementation must be
+    executed against the first, not reviewed by eye. The Android v2 envelope is
+    Java wire code around a pinned cryptographic provider, so the JVM
+    gate compiles the app's real classes and compares hashes, X25519, the bundle
+    signature, transcripts, HKDF keys, AADs and the fingerprint against Go, then
+    has Go decapsulate the Java ML-KEM ciphertext. A second gate pairs and reads
+    a real endpoint from a disposable daemon, because matching vectors can still
+    be wired to the wrong request. Passing both is interoperability, not a
+    side-channel review. Single-use secrets still need side-channel protection;
+    use reviewed implementations rather than assuming fresh randomness makes
+    variable-time arithmetic safe.
 
 ## What is actually substrate-independent
 
@@ -361,6 +372,20 @@ This document states what those clients must preserve.
   The 2026-11-02 internal review's confirmed defects are fixed and tested; its
   remaining hardening gaps are recorded as accepted/deferred in the review's
   resolution table. This is not an external security review.
+- A second envelope suite must be a property of the device row, not a per-message
+  flag. Put the suite and the transcript in the HKDF salt/info and the AAD, put
+  the accepted suite inside the sealed pair payload, and refuse the old suite
+  with a distinct code (`e2ee_suite_downgrade`) so a client cannot retry it as a
+  corrupted frame. The host's minimum is policy; a client claim must not lower
+  it. Hybrid means both secrets concatenated into one input, never either/or.
+- The v2 pair transcript includes the device id, which the client only learns
+  from the response. That is safe because a rewritten id changes the salt, so
+  the sealed payload fails to open, and the payload repeats the id and suite.
+  The host proves its X25519 and ML-KEM keys with a P-256 signature over a
+  domain-tagged, length-prefixed bundle, so rotating those halves does not move
+  the pin. Upgrading the old bare PKCS#8 identity row in place is what keeps
+  existing phones paired; a malformed identity file must fail closed instead of
+  generating a new key.
 
 ## OpenCode proxy contracts (v2.0.26)
 
@@ -466,3 +491,19 @@ This document states what those clients must preserve.
 - [AGENTS.md](../AGENTS.md) — invariants and landmines.
 - [Orca lessons](orca-lessons.md) — the reliability evidence behind the host and
   terminal choices.
+
+## Pairing and stream hardening (2026-11-09)
+
+- Confirm the host fingerprint before transmitting the pairing code. Seal that
+  code to the confirmed hybrid key exchange. A signed public bundle alone does
+  not stop a transport from replacing client ephemeral material and stealing a
+  token when the code itself is sent in the clear.
+- Derive and validate pairing keys before persisting a device. Invalid low-order
+  points must return a client refusal without creating a device.
+- Authenticate stream completion. Frame authentication and sequence numbers
+  cannot distinguish a deliberately truncated prefix from a complete response.
+- Retain unusable pinned host rows. Missing bundle fields are an error to show,
+  not permission to discard the identity and begin trust from scratch.
+- Run the real client code in pull-request checks, and fuzz untrusted protocol
+  parsers as well as terminal output. A dependency scan detects known
+  advisories; it cannot establish that custom protocol logic is safe.

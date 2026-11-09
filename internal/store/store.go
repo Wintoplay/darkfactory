@@ -526,9 +526,13 @@ type Browser struct {
 	// match again, and listing them would show phantom devices.
 	KeyVersion int `json:"keyVersion,omitempty"`
 	// E2EEPublicKey is the native client's P-256 SPKI public key, base64. Its
-	// presence opts the device into the encrypted-envelope route. The server
-	// never stores the client's private half.
+	// presence opts the device into the legacy encrypted-envelope route. The
+	// server never stores the client's private half.
 	E2EEPublicKey string `json:"e2eePublicKey,omitempty"`
+	// E2EESuite names the negotiated envelope suite. Empty means the legacy
+	// P-256 scheme above; "x25519-mlkem768-v1" means the hybrid suite, which
+	// has no stored client key because every request carries an ephemeral one.
+	E2EESuite string `json:"e2eeSuite,omitempty"`
 }
 
 // PutBrowser persists a hashed browser session. The key is
@@ -568,7 +572,9 @@ func (s *Store) ListBrowsers() (map[string]Browser, error) {
 	return out, err
 }
 
-// GetE2EEHostKey returns the daemon's persisted P-256 private key (PKCS#8 DER).
+// GetE2EEHostKey returns the daemon's persisted identity file (JSON: P-256
+// PKCS#8, X25519 scalar, ML-KEM-768 seed, epoch). A row written before the v2
+// suite is a bare PKCS#8 DER key and is upgraded by the caller in place.
 // A missing key is reported as ErrNotFound so the caller can create one once;
 // an unreadable key must fail closed instead of silently rotating identity.
 func (s *Store) GetE2EEHostKey() ([]byte, error) {

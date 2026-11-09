@@ -3,11 +3,17 @@
 Status: **built, E2EE-pinned, multi-host, and emulator-verified** on the
 `dfphone` AVD (1080×2340). The Kotlin APK stored two hosts with separate tokens,
 client keys, pinned daemon keys, and host ids; switched between them; showed a
-down host as offline instead of losing the registry; removed only the host whose
-key changed; confirmed each fingerprint; reloaded without re-pairing; streamed a
-live PTY through encrypted frames; and cleared the current token on logout or
-revocation. Evidence:
+down host as offline instead of losing the registry; confirmed each fingerprint;
+reloaded without re-pairing; streamed a live PTY through encrypted frames; and
+cleared the current token on logout or revocation. Evidence:
 `test/artifacts/client-foundation/android-native/`.
+
+The hybrid post-quantum envelope (v2) is covered by the JVM interop gate, a
+live disposable daemon run, and an emulator acceptance run on `dfphone`:
+paired over v2, loaded `/state`, showed `hybrid PQ` on the host card, and kept
+the saved pin after the host identity changed. See
+`test/artifacts/e2ee-v2-android/`. A
+physical-phone Tailscale run under v2 is still open.
 
 ## What this is
 
@@ -15,15 +21,18 @@ A native Android shell with a bundled UI, written in Kotlin. It is deliberately
 **not** a remote browser pointed at the daemon:
 
 - `MainActivity` pairs with a daemon over HTTPS (plain HTTP is accepted only for
-  loopback or the Android emulator), generates a P-256 client key, and stores
-  the sealed per-device token, client private key, and pinned host public key in
-  Android Keystore-backed AES-GCM storage.
+  loopback or the Android emulator). New pairing requires the advertised v2
+  suite and its P-256-signed key bundle. The phone shows the computed
+  `fingerprintV2` before it sends the one-time code; then it seals that code to
+  the staged ephemeral X25519 and ML-KEM values. Older saved v1 rows can still
+  use their existing P-256 client key, but new v1 pairing is refused.
 - One encrypted registry holds several hosts. Each entry has its own endpoint,
   token, device id, E2EE keys, fingerprint, scope, and host id. A native picker
   connects, adds, or forgets a host; the app connects one host at a time.
-- Pairing returns the daemon host public key and fingerprint; the native dialog
-  requires the user to compare it with the desktop **Pair phone** dialog before
-  the first connection. The desktop QR encodes
+- Before pairing sends the one-time code, the native dialog requires the user
+  to compare the verified host fingerprint with the desktop **Pair phone**
+  dialog. V2 sends only `sealedCode`; a substituted bundle, X25519 key, or
+  ML-KEM key cannot redirect the code to another peer. The desktop QR encodes
   `darkfactory://pair?base=…&code=…`, so the phone camera can prefill the pair
   form without an in-app scanner or camera permission.
 - `LoopbackServer` binds `127.0.0.1:<ephemeral>` but serves the APK's bundled
@@ -33,17 +42,21 @@ A native Android shell with a bundled UI, written in Kotlin. It is deliberately
   can.
 - API requests from the page go to the same local origin. The native proxy
   seals `{method, path, headers, body, token}` into an AES-GCM envelope, posts
-  it to `/api/v1/e2ee`, and opens the encrypted response frames. The bearer
+  it to `/api/v1/e2ee`, and opens the encrypted response frames. V2 requires an
+  authenticated end marker; missing, invalid, or trailing frames fail the local
+  response. The bearer
   token, request bodies, response headers, and terminal/OpenCode bytes are not
   visible to the transport. The page never receives the token, a cookie, or a
   JavaScript bridge.
 - The proxy streams decrypted terminal and OpenCode frames without buffering.
   A local WebView abort is not a host-identity failure; it ends that response
   and lets the page reconnect.
-- A `401`, successful logout, AEAD failure, or changed host key removes the
-  current host and returns to the picker (or to pair when it was the last host).
-  Other saved hosts are preserved. A daemon that returns an unsealed token is
-  refused.
+- A `401`, successful logout, or AEAD failure returns to the host list (or to
+  pair when there is no host left) but **does not delete the host or its pin**.
+  Only an explicit Forget removes an entry, so a network peer cannot force a
+  re-pair and a downgrade by answering with a bare `401`. A changed host key or
+  bundle is likewise reported and refused, not erased. Other saved hosts are
+  preserved. A daemon that returns an unsealed token is refused.
 - Switching hosts destroys the previous loopback origin and WebView before the
   next one loads. Session, worktree, and chat ids therefore never cross hosts;
   there is no parallel merged fleet view.
@@ -59,6 +72,49 @@ must use the native client.
 
 This is the trust boundary the earlier design was missing: the daemon no longer
 hands JavaScript to a remote browser that the transport can rewrite.
+
+## Hybrid post-quantum envelope (v2)
+
+A v2 host advertises suite `x25519-mlkem768-v1` and publishes X25519 and
+ML-KEM-768 public halves in a bundle signed by the P-256 pin. Every request
+carries a fresh X25519 ephemeral key and an ML-KEM-768 ciphertext; the envelope
+keys come from HKDF-SHA256 over both shared secrets plus a transcript that binds
+the suite, bundle, device, request id and timestamp. The key schedule requires
+both the X25519 and ML-KEM shared secrets. The suite is fixed per host row; a v2
+row never falls back to v1. New pairing refuses a host that omits the verified
+v2 bundle, even if its metadata resembles a legacy host.
+
+X25519, ML-KEM-768 encapsulation, SHA3/SHAKE, and HKDF use Bouncy Castle's
+maintained lightweight APIs (`org.bouncycastle:bcprov-jdk18on:1.86`). The
+small Java wrappers in `app/src/main/java/dev/darkfactory/mobile/crypto/`
+validate wire lengths and canonical ML-KEM coefficients, then delegate the
+cryptographic operations to the library. The APK contains no ML-KEM
+decapsulation path. This is reviewed library code, not a formal verification
+claim. The test-time JVM fetch pins the artifact SHA-256; Android runtime does
+not fetch dependencies or need network access to the library.
+
+`HostKey`, `V2Protocol`, `Envelope`, and the bounded encrypted-response reader
+are plain Java too, so a JVM runs the app's crypto and wire code; Kotlin keeps
+JSON, HTTP and UI. Two gates:
+
+```sh
+make android-pq-check   # app classes vs Go vectors; Go decapsulates the Java ciphertext
+make android-pq-live    # pair + encrypted /state against a disposable min-suite=2 daemon
+```
+
+The first checks bundle signatures, stored pin/suite replacement, epoch rollback,
+Go/Java encapsulation interoperability, authenticated stream completion, and
+frame/body limits. The second checks pre-pair code substitution refusal,
+pairing, encrypted `/state`, downgrade, replay, and the authenticated end marker
+against a disposable daemon. Neither gate is a phone run.
+
+The v2 pin is `fingerprintV2 = SHA-256("df-e2ee-v2\0" + base64(P-256 SPKI) +
+"\0" + suite)`. It covers the identity and suite but not the rotating
+X25519/ML-KEM halves, so a bundle rotation under the same P-256 key keeps the
+pin and is re-saved. A missing or rewritten bundle is refused, never downgraded.
+Epochs may advance with the same identity and suite. Lower epochs and changed
+bundles at the same epoch are rejected; explicit Forget is required before
+changing an existing host pin or lowering its suite.
 
 ## Build
 
@@ -153,8 +209,10 @@ you need from the **Hosts** picker.
   `localStorage`, `sessionStorage`, a URL, a log, or a WebView cookie. A sealed
   pairing response has no `Set-Cookie`, so the raw token cannot reappear in a
   response header.
-- The registry is keyed by the daemon's stable `hostId`; re-pairing the same
-  host replaces its entry. Forgetting a host removes only the local token and
+- The registry is keyed by the daemon's stable `hostId`. A replacement must
+  preserve the P-256 identity and suite pin; v2 bundle rotation must advance
+  its epoch. Replacing an unusable row, changing identity, or lowering the v2
+  suite requires explicit Forget. Forgetting removes only the local token and
   pin, so revoke the device on the desktop as well.
 - The page is served from the APK, so a Tailscale or proxy cannot replace
   `app.js`.
@@ -163,10 +221,10 @@ you need from the **Hosts** picker.
   host public key is pinned. The first pairing is trust-on-first-use until the
   user compares the fingerprint on the phone and desktop; the dialog and the
   desktop Pair phone dialog show the same value.
-- A changed host key is refused before the WebView loads; only that host's
-  entry is removed and its URL is prefilled in the pair form. A change during a
-  live request fails AEAD authentication and returns to the picker or pair. The
-  app refuses an unsealed legacy token.
+- A changed host key, suite, or bundle rollback is refused before the WebView
+  loads; its saved row and pin remain in the host picker until explicit Forget.
+  A change during a live request fails AEAD authentication. The app refuses an
+  unsealed token.
 - `android:usesCleartextTraffic="true"` is set because the local proxy is HTTP
   and the emulator uses loopback. `NativePair` separately refuses plaintext
   remote URLs; do not rely on the manifest alone. The encrypted envelope still

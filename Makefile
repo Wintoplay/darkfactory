@@ -15,7 +15,7 @@ MAINTAINER ?= Wintoplay <winroom@gmail.com>
 # commit produce the same bytes (NF-REL-6). Commit time, not build time.
 EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || date +%s)
 
-.PHONY: all build install install-status install-restart update-source test race fuzz vet vuln fmt vendor run clean ui-check ui-gate install-script-check check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run clientbench-build clientbench-check
+.PHONY: all build install install-status install-restart update-source test race fuzz security-check protocol-verify vet vuln fmt vendor run clean ui-check ui-gate install-script-check check dist dist-clean desktop-preflight desktop-build desktop-run desktop-check android-build android-release android-install android-run android-pq-check android-pq-live clientbench-build clientbench-check
 
 all: build
 
@@ -112,7 +112,12 @@ race:
 
 # The corpus runs as ordinary tests above; this explores past it.
 fuzz:
-	go test ./internal/session -run '^$$' -fuzz FuzzBrowserSnapshot -fuzztime 30s
+	sh test/security/fuzz.sh
+
+security-check: android-pq-check android-pq-live fuzz protocol-verify
+
+protocol-verify:
+	sh tools/protocolverify/check.sh
 
 vet:
 	go vet ./...
@@ -202,6 +207,15 @@ ANDROID_VERSION_CODE ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
 android-build:
 	./android/gradlew -p android assembleDebug -PdfVersionName="$(ANDROID_VERSION_NAME)" -PdfVersionCode="$(ANDROID_VERSION_CODE)"
+
+# The client's v2 crypto gets its own gate: a JVM
+# compiles the app's real classes, checks them against Go vectors, and (with
+# android-pq-live) against a disposable daemon. Neither target needs a device.
+android-pq-check:
+	sh test/android/check-pq.sh
+
+android-pq-live:
+	sh test/android/check-e2ee-live.sh
 
 android-release:
 	./android/gradlew -p android assembleRelease -PdfVersionName="$(ANDROID_VERSION_NAME)" -PdfVersionCode="$(ANDROID_VERSION_CODE)"

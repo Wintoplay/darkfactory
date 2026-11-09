@@ -274,7 +274,7 @@ const OPENCODE_MESSAGE_PAGE = 40
 const OPENCODE_MESSAGE_MIN_INTERVAL = 1500
 // Bump this when the browser client changes. It is printed in the footer and
 // the debug panel, so a stale cached app.js is visible instead of mysterious.
-const UI_VERSION = '2026-11-07.03'
+const UI_VERSION = '2026-11-09.01'
 const QUERY = new URLSearchParams(location.search)
 const DEBUG = QUERY.get('debug') === '1'
 // The panel floats over the lower terminal pane, which hides what a screenshot
@@ -5745,8 +5745,21 @@ async function refreshHostFingerprint() {
   label.textContent = ''
   try {
     const data = await api('/api/v1/e2ee/host-key')
-    if (!data.fingerprint) return
-    label.textContent = `Host key ${data.fingerprint}`
+    const lines = []
+    if (data.fingerprintV2) {
+      const suite = data.suite === 'x25519-mlkem768-v1'
+        ? 'hybrid X25519 + ML-KEM-768'
+        : (data.suite || '')
+      lines.push(`Hybrid host key${suite ? ` (${suite})` : ''}: ${data.fingerprintV2}`)
+    }
+    if (data.fingerprint) {
+      lines.push(`Legacy P-256 host key: ${data.fingerprint}`)
+    }
+    if (!lines.length) return
+    // The phone shows one value depending on the suite it paired with; label
+    // both so the user compares the line that matches the app's suite.
+    label.style.whiteSpace = 'pre-line'
+    label.textContent = lines.join('\n')
     label.hidden = false
   } catch (error) {
     debugLog('error', `host fingerprint: ${error.message}`)

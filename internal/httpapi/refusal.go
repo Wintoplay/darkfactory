@@ -88,6 +88,7 @@ const (
 	codeMethodNotAllowed          = "method_not_allowed"
 	codeE2EEUnavailable           = "e2ee_unavailable"
 	codeE2EERateLimited           = "e2ee_rate_limited"
+	codeE2EESuiteDowngrade        = "e2ee_suite_downgrade"
 )
 
 // refusalSpec is the immutable half of a refusal: the status a code maps to
@@ -172,6 +173,7 @@ var refusalSpecs = map[string]refusalSpec{
 	codeMethodNotAllowed:          {http.StatusMethodNotAllowed, true, "use one of the methods in the Allow header"},
 	codeE2EEUnavailable:           {http.StatusServiceUnavailable, false, ""},
 	codeE2EERateLimited:           {http.StatusTooManyRequests, true, "wait a moment and retry"},
+	codeE2EESuiteDowngrade:        {http.StatusForbidden, false, "this host requires a newer app version; update and re-pair"},
 }
 
 // refusal is a failure before it is encoded. Route handlers and the gateway

@@ -1,0 +1,64 @@
+(*
+   Negative control: the client validates that a key bundle is self-signed but
+   skips the independent, trusted fingerprint comparison. The network peer
+   supplies its own signed bundle and knows both hybrid private halves, so it
+   decrypts the one-time code. A real attacker can then spend that code at the
+   intended host. This models the first-pair attack fixed by comparing the
+   desktop-displayed fingerprint before the POST.
+*)
+
+set ignoreTypes = false.
+free net: channel.
+free expectedHost: bitstring.
+free v2: bitstring.
+free suiteV2: bitstring.
+free pairCode: bitstring [private].
+
+type exponent.
+type signingkey.
+type key.
+
+fun pub(exponent): bitstring.
+fun dh(exponent, bitstring): bitstring.
+equation forall x: exponent, y: exponent; dh(x, pub(y)) = dh(y, pub(x)).
+fun kemPk(bitstring): bitstring.
+fun kemenc(bitstring, bitstring): bitstring.
+reduc forall ss: bitstring, sk: bitstring; kemdec(kemenc(ss, kemPk(sk)), sk) = ss.
+fun sign(bitstring, signingkey): bitstring.
+fun signingPublic(signingkey): bitstring.
+reduc forall m: bitstring, sk: signingkey; checksignature(sign(m, sk), m, signingPublic(sk)) = m.
+fun hash2(bitstring, bitstring): bitstring.
+fun bundleHash(bitstring): bitstring.
+fun pairInitTranscript(bitstring, bitstring, bitstring): bitstring.
+fun kdf(bitstring, bitstring, bitstring): key.
+fun aead(bitstring, key, bitstring): bitstring.
+reduc forall m: bitstring, k: key, a: bitstring; open(aead(m, k, a), k, a) = m.
+
+query attacker(pairCode).
+
+process
+  new fakeDH: exponent;
+  new fakeKEM: bitstring;
+  new fakeSigning: signingkey;
+  let identity = signingPublic(fakeSigning) in
+  let dhPublic = pub(fakeDH) in
+  let kemPublic = kemPk(fakeKEM) in
+  let bundle = (expectedHost, identity, dhPublic, kemPublic, suiteV2) in
+  let signature = sign(bundle, fakeSigning) in
+  (* The client verifies this signature but omits comparison with expectedPin. *)
+  if checksignature(signature, bundle, identity) = bundle then
+    new clientDH: exponent;
+    new kemShared: bitstring;
+    let epk = pub(clientDH) in
+    let ct = kemenc(kemShared, kemPublic) in
+    let dhShared = dh(clientDH, dhPublic) in
+    let tx = pairInitTranscript(bundleHash(bundle), expectedHost, hash2(epk, ct)) in
+    let k = kdf(dhShared, kemShared, tx) in
+    let sealedCode = aead(pairCode, k, tx) in
+    out(net, (v2, suiteV2, epk, ct, sealedCode));
+    (* The attacker-controlled endpoint computes the same two halves. *)
+    let peerDH = dh(fakeDH, epk) in
+    let peerKEM = kemdec(ct, fakeKEM) in
+    let peerKey = kdf(peerDH, peerKEM, tx) in
+    let stolenCode = open(sealedCode, peerKey, tx) in
+    out(net, stolenCode)

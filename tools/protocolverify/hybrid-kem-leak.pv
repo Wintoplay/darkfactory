@@ -1,0 +1,31 @@
+(* Hybrid combiner: even with the ML-KEM private key exposed, the X25519
+   shared secret remains unavailable and the token stays secret. *)
+set ignoreTypes = false.
+free net: channel.
+type exponent.
+type key.
+free deviceToken: bitstring [private].
+free transcript: bitstring.
+free aad: bitstring.
+fun pub(exponent): bitstring.
+fun dh(exponent, bitstring): bitstring.
+equation forall x: exponent, y: exponent; dh(x, pub(y)) = dh(y, pub(x)).
+fun kemPk(bitstring): bitstring.
+fun kemenc(bitstring, bitstring): bitstring.
+reduc forall ss: bitstring, sk: bitstring; kemdec(kemenc(ss, kemPk(sk)), sk) = ss.
+fun kdf(bitstring, bitstring, bitstring): key.
+fun aead(bitstring, key, bitstring): bitstring.
+reduc forall m: bitstring, k: key, a: bitstring; open(aead(m, k, a), k, a) = m.
+query attacker(deviceToken).
+process
+  new hostDH: exponent;
+  new clientDH: exponent;
+  new kemPrivate: bitstring;
+  new kemShared: bitstring;
+  let epk = pub(clientDH) in
+  let kemCiphertext = kemenc(kemShared, kemPk(kemPrivate)) in
+  let dhShared = dh(hostDH, epk) in
+  let combinedKey = kdf(dhShared, kemShared, transcript) in
+  out(net, (pub(hostDH), epk, kemPk(kemPrivate), kemCiphertext,
+            aead(deviceToken, combinedKey, aad)));
+  out(net, kemPrivate)

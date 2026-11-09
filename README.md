@@ -140,9 +140,11 @@ host alone, so hosted PTYs survive; only the daemon process is replaced.
 
 ### Desktop entry and start at login
 
-Clicking **DarkFactory** in the app menu runs `darkfactory launch`: it starts
-the daemon in the background if nothing is listening yet, then opens the
-workspace in your browser. For start-at-login instead:
+Clicking **DarkFactory** in the app menu runs `darkfactory launch --desktop`:
+it starts the daemon in the background if nothing is listening yet, then opens
+the workspace. If `darkfactory-desktop` is installed next to the daemon (or on
+`PATH`), it opens the native window with the in-app terminal; otherwise it
+opens the browser. For start-at-login instead:
 
 ```bash
 systemctl --user enable --now darkfactory

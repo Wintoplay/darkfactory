@@ -1,0 +1,40 @@
+(* Negative control: client treats a head/body-only stream as complete. The
+   modeled server aborts before sending END, but the truncated client still
+   reports completion. ProVerif must find this correspondence failure. *)
+set ignoreTypes = false.
+free net: channel.
+free keyDelivery: channel [private].
+type key.
+type requestid.
+type deviceid.
+free req: requestid.
+free device: deviceid.
+free head: bitstring [private].
+free body: bitstring [private].
+free index0, index1: bitstring.
+free abortResponse: bitstring.
+fun dataAad(deviceid, requestid, bitstring): bitstring.
+fun aead(bitstring, key, bitstring): bitstring.
+reduc forall m: bitstring, k: key, a: bitstring; open(aead(m, k, a), k, a) = m.
+
+event ServerEnd(requestid, bitstring).
+event ClientComplete(requestid, bitstring).
+query r: requestid, b: bitstring; event(ClientComplete(r,b)) ==> event(ServerEnd(r,b)).
+
+let Server =
+  new responseKey: key;
+  out(keyDelivery, responseKey);
+  out(net, aead(head, responseKey, dataAad(device, req, index0)));
+  out(net, aead(body, responseKey, dataAad(device, req, index1)));
+  in(net, outcome: bitstring);
+  if outcome = abortResponse then 0.
+
+let TruncatedClient =
+  in(keyDelivery, responseKey: key);
+  in(net, frame0: bitstring);
+  if open(frame0, responseKey, dataAad(device, req, index0)) = head then
+    in(net, frame1: bitstring);
+    if open(frame1, responseKey, dataAad(device, req, index1)) = body then
+      event ClientComplete(req, body).
+
+process (Server | TruncatedClient)

@@ -2,8 +2,11 @@ name: vuln
 
 # govulncheck asks whether this code can *reach* an advisory, not whether a
 # pinned version merely matches one. It needs the vulnerability database, so it
-# is not part of `make check`; weekly is enough to notice a new one.
+# also runs on pull requests and pushes; the schedule catches later advisories.
 on:
+  pull_request:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -13,7 +16,10 @@ permissions:
 
 jobs:
   govulncheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        module: ['.', 'desktop']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -21,6 +27,12 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: desktop headers
+        if: matrix.module == 'desktop'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libvte-2.91-gtk4-dev libsoup-3.0-dev
       - name: scan
-        run: make vuln
+        working-directory: ${{ matrix.module }}
+        run: govulncheck ./...

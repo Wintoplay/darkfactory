@@ -1,0 +1,138 @@
+(*
+   DarkFactory v2 pairing, symbolic Dolev-Yao model.
+
+   The two hybrid KEM halves are modeled as independent symbolic secrets.
+   `dh` is an idealized symmetric DH operator; `kemenc/kemdec` are idealized
+   encapsulation/decapsulation; `kdf` is a free constructor; and `aead/open`
+   is perfect authenticated encryption. This says nothing about Go/Java code,
+   X25519, ML-KEM-768, HKDF-SHA256, AES-GCM, hash collisions, side channels,
+   entropy, or their composition in the computational model.
+
+   `pin` and `codeDisplay` model the human's trusted out-of-band fingerprint
+   comparison and one-time code transfer from the already authenticated local
+   desktop. They are private channels, not network metadata. The client checks
+   the displayed pin before it sends `sealedCode`.
+*)
+
+set ignoreTypes = false.
+
+free net: channel.
+free pin: channel [private].
+free codeDisplay: channel [private].
+
+type exponent.
+type kemsecret.
+type signingkey.
+type key.
+type hostid.
+type deviceid.
+
+free expectedHost: hostid.
+free v2: bitstring.
+free suiteV2: bitstring.
+free bundleEpoch: bitstring.
+free pairCode: bitstring [private].
+free deviceToken: bitstring [private].
+
+fun gx(): bitstring [data].
+fun pub(exponent): bitstring.
+fun dh(exponent, bitstring): bitstring.
+equation forall x: exponent, y: exponent; dh(x, pub(y)) = dh(y, pub(x)).
+
+fun kemPk(bitstring): bitstring.
+fun kemenc(bitstring, bitstring): bitstring.
+reduc forall ss: bitstring, sk: bitstring; kemdec(kemenc(ss, kemPk(sk)), sk) = ss.
+
+fun sign(bitstring, signingkey): bitstring.
+fun signingPublic(signingkey): bitstring.
+reduc forall m: bitstring, sk: signingkey; checksignature(sign(m, sk), m, signingPublic(sk)) = m.
+
+fun fingerprint(bitstring, bitstring): bitstring.
+fun hash2(bitstring, bitstring): bitstring.
+fun bundleHash(bitstring): bitstring.
+fun pairInitTranscript(bitstring, hostid, bitstring): bitstring.
+fun pairTranscript(bitstring, hostid, deviceid, bitstring): bitstring.
+fun kdf(bitstring, bitstring, bitstring): key.
+fun aead(bitstring, key, bitstring): bitstring.
+reduc forall m: bitstring, k: key, a: bitstring; open(aead(m, k, a), k, a) = m.
+
+event HostGrant(hostid, bitstring).
+event ClientSend(hostid, bitstring, bitstring, bitstring, bitstring).
+event HostAccept(hostid, deviceid, bitstring, bitstring, bitstring, bitstring).
+event HostPairComplete(hostid, deviceid, bitstring, bitstring).
+event ClientComplete(hostid, deviceid, bitstring, bitstring).
+event HostMint(bitstring).
+
+query attacker(pairCode).
+query attacker(deviceToken).
+query h: hostid, d: deviceid, s: bitstring, p: bitstring;
+  event(ClientComplete(h,d,s,p)) ==> event(HostPairComplete(h,d,s,p)).
+query h: hostid, d: deviceid, s: bitstring, p: bitstring;
+  event(ClientComplete(h,d,s,p)).
+query h: hostid, d: deviceid, s: bitstring, p: bitstring, epk: bitstring, ct: bitstring;
+  event(HostAccept(h,d,s,p,epk,ct)) ==> event(ClientSend(h,s,p,epk,ct)).
+query h: hostid, d: deviceid, s: bitstring, p: bitstring, epk: bitstring, ct: bitstring;
+  event(HostAccept(h,d,s,p,epk,ct)).
+query t: bitstring; event(HostMint(t)) && attacker(t).
+
+let Host(h: hostid) =
+  new dhSk: exponent;
+  new kemSk: bitstring;
+  new signSk: signingkey;
+  let dhPk = pub(dhSk) in
+  let kemPublic = kemPk(kemSk) in
+  let signingPk = signingPublic(signSk) in
+  let hostFingerprint = fingerprint(signingPk, suiteV2) in
+  (* The signed canonical bundle contains suite, epoch, and public keys. The
+     separate hostId is not a signed-bundle field; pair-init binds it later. *)
+  let bundle = (signingPk, dhPk, kemPublic, bundleEpoch, suiteV2) in
+  let signature = sign(bundle, signSk) in
+  out(net, (h, bundle, signature));
+  out(pin, hostFingerprint);
+  out(codeDisplay, pairCode);
+  event HostGrant(h, pairCode);
+  in(net, (version: bitstring, suite: bitstring, epk: bitstring, ct: bitstring, sealedCode: bitstring));
+  if version = v2 && suite = suiteV2 then
+    let dhSecret = dh(dhSk, epk) in
+    let kemSecret = kemdec(ct, kemSk) in
+    let tx = pairInitTranscript(bundleHash(bundle), h, hash2(epk, ct)) in
+    let k = kdf(dhSecret, kemSecret, tx) in
+    let code = open(sealedCode, k, tx) in
+    if code = pairCode then
+      new d: deviceid;
+      let responseTx = pairTranscript(bundleHash(bundle), h, d, hash2(epk, ct)) in
+      let responseKey = kdf(dhSecret, kemSecret, responseTx) in
+      let sealedToken = aead(deviceToken, responseKey, responseTx) in
+      event HostAccept(h, d, suiteV2, hostFingerprint, epk, ct);
+      event HostPairComplete(h, d, suiteV2, hostFingerprint);
+      event HostMint(deviceToken);
+      out(net, (h, d, suiteV2, sealedToken))
+  else 0.
+
+let Client =
+  in(pin, expectedPin: bitstring);
+  in(codeDisplay, code: bitstring);
+  in(net, (host: hostid, bundle: bitstring, signature: bitstring));
+  let (identity: bitstring, dhPublic: bitstring, kemPublic: bitstring, =bundleEpoch, =suiteV2) = bundle in
+    if checksignature(signature, bundle, identity) = bundle then
+      if fingerprint(identity, suiteV2) = expectedPin then
+        new clientSk: exponent;
+        new kemSecret: bitstring;
+        let epk = pub(clientSk) in
+        let ct = kemenc(kemSecret, kemPublic) in
+        let dhSecret = dh(clientSk, dhPublic) in
+        let tx = pairInitTranscript(bundleHash(bundle), host, hash2(epk, ct)) in
+        let initKey = kdf(dhSecret, kemSecret, tx) in
+        let sealedCode = aead(code, initKey, tx) in
+        event ClientSend(host, suiteV2, expectedPin, epk, ct);
+        out(net, (v2, suiteV2, epk, ct, sealedCode));
+        in(net, (respHost: hostid, d: deviceid, respSuite: bitstring, sealedToken: bitstring));
+        if respHost = host && respSuite = suiteV2 then
+          let responseTx = pairTranscript(bundleHash(bundle), host, d, hash2(epk, ct)) in
+          let responseKey = kdf(dhSecret, kemSecret, responseTx) in
+          let token = open(sealedToken, responseKey, responseTx) in
+            event ClientComplete(host,d,suiteV2,expectedPin)
+  else 0.
+
+process (Host(expectedHost) | Client)
+

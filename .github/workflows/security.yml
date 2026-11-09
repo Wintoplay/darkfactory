@@ -1,0 +1,80 @@
+name: protocol security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Android SDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;35.0.0" "system-images;android-34;google_apis;x86_64"'
+      - name: compile and lint the production client
+        run: ./android/gradlew -p android --no-daemon lintDebug assembleDebug assembleDebugAndroidTest
+      - name: resolved Android runtime advisories
+        run: python3 test/security/dependencies.py --android-runtime android/app/build/reports/security-runtime-dependencies.json
+      - name: actual pairing UI and saved pin retention
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/security-avds
+        run: |
+          mkdir -p "$ANDROID_AVD_HOME"
+          sudo chown "$(id -u):$(id -g)" /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name security --package 'system-images;android-34;google_apis;x86_64' --device pixel_5
+          "$ANDROID_HOME/emulator/emulator" -avd security -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/security-emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          adb="$ANDROID_HOME/platform-tools/adb"
+          timeout 180 "$adb" -s emulator-5554 wait-for-device
+          booted=0
+          for attempt in $(seq 1 90); do
+            if [ "$("$adb" -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then booted=1; break; fi
+            sleep 2
+          done
+          test "$booted" = 1
+          make build
+          python3 test/security/android_acceptance.py --serial emulator-5554 --adb "$adb"
+          ./android/gradlew -p android --no-daemon connectedDebugAndroidTest
+  protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: symbolic verifier build prerequisite
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ocaml-nox
+      - name: client interoperability, live protocol, and fuzzing
+        run: make security-check
+      - name: Java and JavaScript vulnerability inventory
+        run: python3 test/security/dependencies.py
+      - name: retain failure corpus
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-fuzz-failures
+          path: internal/**/testdata/fuzz/
+          if-no-files-found: ignore

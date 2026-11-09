@@ -73,9 +73,7 @@ class MainActivity : Activity() {
             return
         }
         if (!active.hasE2EE) {
-            val next = tokenStore.remove(active.hostId)
-            val message = "This saved device predates app-layer encryption. Pair again."
-            if (next.hosts.isEmpty()) showPairing(message) else showHosts(message)
+            showHosts("This saved device predates app-layer encryption. Its pin is retained; explicitly Forget it to remove it, then pair again.")
             return
         }
         startWeb(active)
@@ -279,11 +277,15 @@ class MainActivity : Activity() {
             }
             pair.isEnabled = false
             status.setTextColor(MUTED)
-            status.text = "Pairing…"
+            status.text = "Checking the host key…"
             Thread({
                 try {
-                    val connection = NativePair.pair(daemon, pairingCode)
-                    runOnUiThread { confirmHostKey(connection, status, pair) }
+                    val prepared = NativePair.prepare(
+                        daemon,
+                        pairingCode,
+                        tokenStore.loadRegistry().hosts
+                    )
+                    runOnUiThread { confirmPairing(prepared, status, pair) }
                 } catch (error: Exception) {
                     val detail = error.message
                     runOnUiThread {
@@ -305,14 +307,14 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun confirmHostKey(
-        connection: TokenStore.Connection,
+    private fun confirmPairing(
+        prepared: NativePair.PreparedPair,
         status: TextView,
         pairButton: Button
     ) {
-        if (!connection.hasE2EE || connection.fingerprint.isEmpty()) {
+        if (prepared.fingerprint.isEmpty()) {
             status.setTextColor(ERROR)
-            status.text = "This daemon did not negotiate app-layer encryption. Update it and pair again."
+            status.text = "This daemon did not provide a verifiable host key. Update it and pair again."
             pairButton.isEnabled = true
             return
         }
@@ -321,20 +323,40 @@ class MainActivity : Activity() {
             .setTitle("Verify the host key")
             .setMessage(
                 "Compare this fingerprint with the Pair a phone dialog on the desktop:\n\n" +
-                    connection.fingerprint +
+                    prepared.fingerprint +
+                    "\n\nSuite: " + prepared.suite +
                     "\n\nIf it does not match, cancel and pair again. A mismatched key means " +
-                    "the network path is not the daemon you expect."
+                    "the network path is not the daemon you expect. The one-time code is sent only after you confirm."
             )
             .setCancelable(false)
             .setPositiveButton("Fingerprint matches") { _, _ ->
-                try {
-                    tokenStore.save(connection)
-                    startWeb(connection)
-                } catch (error: Exception) {
-                    status.setTextColor(ERROR)
-                    status.text = "Could not protect the device token: ${error.message}"
-                    pairButton.isEnabled = true
-                }
+                status.setTextColor(MUTED)
+                status.text = "Completing pairing…"
+                Thread({
+                    try {
+                        val connection = NativePair.complete(
+                            prepared,
+                            tokenStore.loadRegistry().hosts
+                        )
+                        runOnUiThread {
+                            try {
+                                tokenStore.save(connection)
+                                startWeb(connection)
+                            } catch (error: Exception) {
+                                status.setTextColor(ERROR)
+                                status.text = "Could not protect the device token: ${error.message}"
+                                pairButton.isEnabled = true
+                            }
+                        }
+                    } catch (error: Exception) {
+                        runOnUiThread {
+                            val detail = error.message
+                            status.setTextColor(ERROR)
+                            status.text = if (detail.isNullOrEmpty()) "Pairing failed." else detail
+                            pairButton.isEnabled = true
+                        }
+                    }
+                }, "darkfactory-pair-complete").start()
             }
             .setNegativeButton("Cancel") { _, _ ->
                 if (tokenStore.loadRegistry().hosts.isEmpty()) {
@@ -351,24 +373,23 @@ class MainActivity : Activity() {
             // The picker can still show a row that lost its E2EE fields (a
             // migration or a cold start from a pair deep link). Refuse before
             // opening any upstream connection: there is no plaintext path.
-            val message = "This saved host has no app-layer encryption key. Pair again."
-            val next = tokenStore.remove(connection.hostId)
-            if (next.hosts.isEmpty()) showPairing(message) else showHosts(message)
+            showHosts("This saved host has no app-layer encryption key. Forget it and pair again.")
             return
         }
         stopWeb()
         val generation = connectGeneration
         showLoading(connection)
         Thread({
-            try {
+            val verified = try {
                 NativePair.verifyHost(connection)
             } catch (error: NativePair.HostIdentityChangedException) {
+                // Keep the pin. Forgetting it on the word of an unauthenticated
+                // peer is exactly how a forced re-pair becomes a downgrade; the
+                // user forgets and re-pairs deliberately from the host list.
                 runOnUiThread {
                     if (generation != connectGeneration || isFinishing) return@runOnUiThread
-                    tokenStore.remove(connection.hostId)
-                    showPairing(
-                        "Host identity changed. Pair again and compare the new fingerprint.",
-                        connection.base
+                    showHosts(
+                        error.message ?: "Host identity changed. Forget the host and pair again."
                     )
                 }
                 return@Thread
@@ -386,7 +407,16 @@ class MainActivity : Activity() {
             }
             runOnUiThread {
                 if (generation != connectGeneration || isFinishing) return@runOnUiThread
-                startWebNow(connection)
+                if (verified != connection) {
+                    // The daemon rotated its X25519/ML-KEM half under the same
+                    // pin; remember the new signed bundle for the next launch.
+                    try {
+                        tokenStore.save(verified)
+                    } catch (_: Exception) {
+                        // A stale bundle still works; verifyHost runs again.
+                    }
+                }
+                startWebNow(verified)
             }
         }, "darkfactory-verify").start()
     }
@@ -429,24 +459,14 @@ class MainActivity : Activity() {
     }
 
     private fun startWebNow(connection: TokenStore.Connection) {
-        val e2ee = if (connection.hasE2EE) {
-            try {
-                E2EE(
-                    clientPrivate = E2EE.privateKey(connection.clientPrivateKey),
-                    hostPublic = E2EE.publicKey(connection.hostPublicKey),
-                    clientPublicKeyB64 = connection.clientPublicKey,
-                    hostPublicKeyB64 = connection.hostPublicKey,
-                    deviceId = connection.deviceId,
-                    token = connection.token
-                )
-            } catch (error: Exception) {
-                tokenStore.remove(connection.hostId)
-                val message = "The stored host key is not usable. Pair again."
-                if (tokenStore.loadRegistry().hosts.isEmpty()) showPairing(message) else showHosts(message)
-                return
-            }
-        } else {
-            null
+        val e2ee = try {
+            E2EE.from(connection)
+        } catch (error: Exception) {
+            // Local key material is unusable. The row and its pin stay: only an
+            // explicit Forget removes a host, so a corrupt file cannot be turned
+            // into a re-pair by anything on the network.
+            showHosts("The stored host key is not usable: ${error.message} Forget it and pair again.")
+            return
         }
         val local = try {
             LoopbackServer(
@@ -455,7 +475,7 @@ class MainActivity : Activity() {
                 e2ee,
                 onLogout = { message ->
                     runOnUiThread {
-                        if (currentHostId == connection.hostId) forgetHost(connection, message)
+                        if (currentHostId == connection.hostId) showHosts(message)
                     }
                 }
             )
@@ -703,6 +723,8 @@ class MainActivity : Activity() {
 
         val meta = buildString {
             append(scopeLabel(host.scope))
+            append(" · ")
+            append(if (host.isHybrid) "hybrid PQ" else "P-256")
             append(" · host ")
             append(host.hostId.take(8))
         }
@@ -758,20 +780,17 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun forgetHost(connection: TokenStore.Connection, message: String) {
-        tokenStore.remove(connection.hostId)
-        val next = tokenStore.loadRegistry()
-        if (next.hosts.isEmpty()) {
-            NotificationService.stop(this)
-            showPairing(message)
-        } else {
-            showHosts(message)
-        }
-    }
-
     private fun labelOf(connection: TokenStore.Connection): String {
         return connection.label.ifEmpty {
             NativePair.hostLabel(connection.base)
+        }
+    }
+
+    private fun suiteLabel(connection: TokenStore.Connection): String {
+        return if (connection.isHybrid) {
+            "hybrid X25519 + ML-KEM-768"
+        } else {
+            "P-256 (legacy)"
         }
     }
 

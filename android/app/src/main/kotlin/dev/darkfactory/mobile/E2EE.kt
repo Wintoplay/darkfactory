@@ -1,6 +1,9 @@
 package dev.darkfactory.mobile
 
 import android.util.Base64
+import dev.darkfactory.mobile.crypto.Hkdf
+import dev.darkfactory.mobile.crypto.MlKem768
+import dev.darkfactory.mobile.crypto.X25519
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
@@ -12,80 +15,198 @@ import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
-import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
-import javax.crypto.Mac
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 /**
- * Application-layer encryption for the native proxy. The daemon and the app
- * derive directional AES-GCM keys from P-256 ECDH; the host public key is
- * pinned after pairing. A Tailscale peer that can rewrite TLS still sees only
- * the envelope route, opaque frames, and no bearer token.
+ * Application-layer encryption for the native proxy.
+ *
+ * <p>Two suites exist. The legacy v1 derives directional AES-GCM keys from a
+ * per-pair P-256 client key and the host's P-256 key. The v2 suite
+ * (`x25519-mlkem768-v1`) sends a fresh X25519 ephemeral key and an ML-KEM-768
+ * ciphertext with every request and derives the keys from both shared secrets,
+ * so breaking the envelope needs a classical <em>and</em> a quantum attack. The
+ * suite is a property of the stored host row; it is never negotiated per
+ * message, and a v2 row refuses to fall back.
  */
-internal class E2EE(
-    private val clientPrivate: PrivateKey,
-    private val hostPublic: PublicKey,
-    val clientPublicKeyB64: String,
-    val hostPublicKeyB64: String,
-    val deviceId: String,
-    val token: String
-) {
-    private val clientToServer: ByteArray
-    private val serverToClient: ByteArray
+internal sealed class E2EE {
+    abstract val deviceId: String
 
-    init {
-        val pair = derive(clientPrivate, hostPublic, hostPublicKeyB64, clientPublicKeyB64)
-        clientToServer = pair.first
-        serverToClient = pair.second
+    /**
+     * One sealed request. The daemon derives response keys from the request's
+     * own key material, so the opener travels with the request instead of being
+     * cached on the cipher.
+     */
+    class SealedRequest internal constructor(
+        val envelope: String,
+        private val opener: (ByteArray, Int) -> ByteArray,
+        private val endOpener: ((ByteArray, Int) -> ByteArray?)? = null
+    ) {
+        fun openFrame(frame: ByteArray, index: Int): ByteArray = opener(frame, index)
+        fun openEndFrame(frame: ByteArray, index: Int): ByteArray? = endOpener?.invoke(frame, index)
+        val hasAuthenticatedEndMarker: Boolean get() = endOpener != null
     }
 
-    fun sealRequest(
+    abstract fun sealRequest(
         method: String,
         path: String,
         headers: Map<String, String>,
         body: ByteArray
-    ): Pair<String, String> {
-        val requestId = randomHex(16)
-        val timestamp = System.currentTimeMillis()
-        val headerObject = JSONObject()
-        for ((name, value) in headers) headerObject.put(name, value)
-        val plain = JSONObject()
-            .put("method", method)
-            .put("path", path)
-            .put("headers", headerObject)
-            .put("body", Base64.encodeToString(body, Base64.NO_WRAP))
-            .put("token", token)
-            .toString()
-            .toByteArray(StandardCharsets.UTF_8)
-        val aad = "req|$deviceId|$requestId|$timestamp".toByteArray(StandardCharsets.UTF_8)
-        val sealed = seal(clientToServer, plain, aad)
-        val envelope = JSONObject()
-            .put("v", VERSION)
-            .put("deviceId", deviceId)
-            .put("id", requestId)
-            .put("ts", timestamp)
-            .put("nonce", Base64.encodeToString(sealed.first, Base64.NO_WRAP))
-            .put("ciphertext", Base64.encodeToString(sealed.second, Base64.NO_WRAP))
-            .toString()
-        return Pair(envelope, requestId)
+    ): SealedRequest
+
+    /** The legacy P-256 suite, paired before v2 existed. */
+    class V1(
+        clientPrivate: PrivateKey,
+        hostPublic: PublicKey,
+        clientPublicKeyB64: String,
+        hostPublicKeyB64: String,
+        override val deviceId: String,
+        private val token: String
+    ) : E2EE() {
+        private val clientToServer: ByteArray
+        private val serverToClient: ByteArray
+
+        init {
+            val keys = derive(clientPrivate, hostPublic, hostPublicKeyB64, clientPublicKeyB64)
+            clientToServer = keys[0]
+            serverToClient = keys[1]
+        }
+
+        override fun sealRequest(
+            method: String,
+            path: String,
+            headers: Map<String, String>,
+            body: ByteArray
+        ): SealedRequest {
+            val requestId = randomHex(16)
+            val timestamp = System.currentTimeMillis()
+            val plain = requestJson(method, path, headers, body, token)
+                .toByteArray(StandardCharsets.UTF_8)
+            val aad = "req|$deviceId|$requestId|$timestamp".toByteArray(StandardCharsets.UTF_8)
+            val parts = Envelope.sealParts(clientToServer, plain, aad)
+            val envelope = JSONObject()
+                .put("v", VERSION_V1)
+                .put("deviceId", deviceId)
+                .put("id", requestId)
+                .put("ts", timestamp)
+                .put("nonce", base64(parts.nonce))
+                .put("ciphertext", base64(parts.ciphertext))
+                .toString()
+            return SealedRequest(envelope, { frame, index ->
+                Envelope.open(
+                    serverToClient,
+                    frame,
+                    "resp|$deviceId|$requestId|$index".toByteArray(StandardCharsets.UTF_8)
+                )
+            })
+        }
     }
 
-    fun openFrame(frame: ByteArray, requestId: String, index: Int): ByteArray {
-        if (frame.size < NONCE_BYTES + 16) throw IllegalStateException("encrypted frame is too short")
-        val nonce = frame.copyOfRange(0, NONCE_BYTES)
-        val sealed = frame.copyOfRange(NONCE_BYTES, frame.size)
-        val aad = "resp|$deviceId|$requestId|$index".toByteArray(StandardCharsets.UTF_8)
-        return open(serverToClient, nonce, sealed, aad)
+    /** The hybrid X25519 + ML-KEM-768 suite. */
+    class V2(
+        private val hostKey: HostKey,
+        override val deviceId: String,
+        private val token: String
+    ) : E2EE() {
+        override fun sealRequest(
+            method: String,
+            path: String,
+            headers: Map<String, String>,
+            body: ByteArray
+        ): SealedRequest {
+            val requestId = randomHex(16)
+            val timestamp = System.currentTimeMillis()
+
+            val ephemeral = X25519.generateKeyPair(RANDOM)
+            val encapsulation = MlKem768.encapsulate(hostKey.mlkem)
+            val sharedDh = X25519.scalarMult(ephemeral.privateKey, hostKey.x25519)
+            val inputKeyMaterial = V2Protocol.combine(sharedDh, encapsulation.sharedKey)
+            val transcript = V2Protocol.requestTranscript(
+                hostKey.bundleHash,
+                deviceId,
+                requestId,
+                timestamp,
+                ephemeral.publicKey,
+                encapsulation.ciphertext
+            )
+            val keys = V2Protocol.deriveKeys(inputKeyMaterial, transcript)
+
+            val plain = requestJson(method, path, headers, body, token)
+                .toByteArray(StandardCharsets.UTF_8)
+            val aad = V2Protocol.requestAad(deviceId, requestId, timestamp)
+                .toByteArray(StandardCharsets.UTF_8)
+            val parts = Envelope.sealParts(keys[0], plain, aad)
+            val envelope = JSONObject()
+                .put("v", VERSION_V2)
+                .put("deviceId", deviceId)
+                .put("id", requestId)
+                .put("ts", timestamp)
+                .put("suite", HostKey.SUITE)
+                .put("epk", base64(ephemeral.publicKey))
+                .put("kem", base64(encapsulation.ciphertext))
+                .put("nonce", base64(parts.nonce))
+                .put("ciphertext", base64(parts.ciphertext))
+                .toString()
+            val responseAad = V2Protocol.responseAad(deviceId, requestId)
+            return SealedRequest(
+                envelope,
+                { frame, index ->
+                    Envelope.open(
+                        keys[1],
+                        frame,
+                        "$responseAad|$index".toByteArray(StandardCharsets.UTF_8)
+                    )
+                },
+                { frame, index ->
+                    try {
+                        Envelope.open(
+                            keys[1],
+                            frame,
+                            V2Protocol.responseEndAad(deviceId, requestId, index)
+                                .toByteArray(StandardCharsets.UTF_8)
+                        )
+                    } catch (_: IllegalStateException) {
+                        null
+                    }
+                }
+            )
+        }
     }
 
-    companion object {
-        private const val VERSION = 1
-        private const val NONCE_BYTES = 12
-        private const val TAG_BITS = 128
+    internal companion object {
+        const val VERSION_V1 = 1
+        const val VERSION_V2 = 2
         private const val KEY_INFO = "darkfactory-e2ee-v1"
         private val RANDOM = SecureRandom()
+
+        /** Builds the cipher for a stored row, or fails closed. */
+        fun from(connection: TokenStore.Connection): E2EE {
+            when (connection.suite) {
+                HostKey.SUITE -> {
+                    val host = HostBundle.stored(connection.hostBundle)
+                    host.requireStoredPin(
+                        connection.hostPublicKey,
+                        connection.suite,
+                        connection.fingerprintV2
+                    )
+                    if (connection.fingerprint != connection.fingerprintV2) {
+                        throw IllegalStateException("The stored fingerprint does not match the hybrid suite pin.")
+                    }
+                    return V2(host, connection.deviceId, connection.token)
+                }
+                "" -> {
+                    HostFingerprint.verified(connection.hostPublicKey, connection.fingerprint)
+                    return V1(
+                        privateKey(connection.clientPrivateKey),
+                        publicKey(connection.hostPublicKey),
+                        connection.clientPublicKey,
+                        connection.hostPublicKey,
+                        connection.deviceId,
+                        connection.token
+                    )
+                }
+                else -> throw IllegalStateException("The stored host suite is unsupported.")
+            }
+        }
 
         fun generateKeyPair(): KeyPair {
             val generator = KeyPairGenerator.getInstance("EC")
@@ -111,73 +232,50 @@ internal class E2EE(
             hostPublic: PublicKey,
             hostPublicB64: String,
             clientPublicB64: String
-        ): Pair<ByteArray, ByteArray> {
+        ): Array<ByteArray> {
             val agreement = KeyAgreement.getInstance("ECDH")
             agreement.init(clientPrivate)
             agreement.doPhase(hostPublic, true)
             val shared = agreement.generateSecret()
-            val salt = sha256("$hostPublicB64|$clientPublicB64".toByteArray(StandardCharsets.UTF_8))
-            val derived = hkdf(shared, salt, KEY_INFO.toByteArray(StandardCharsets.UTF_8), 64)
-            return Pair(derived.copyOfRange(0, 32), derived.copyOfRange(32, 64))
+            val salt = Hkdf.sha256(
+                "$hostPublicB64|$clientPublicB64".toByteArray(StandardCharsets.UTF_8)
+            )
+            val derived = Hkdf.sha256(
+                shared,
+                salt,
+                KEY_INFO.toByteArray(StandardCharsets.UTF_8),
+                64
+            )
+            return arrayOf(derived.copyOfRange(0, 32), derived.copyOfRange(32, 64))
         }
 
         fun openPairToken(sealedB64: String, key: ByteArray, aad: String): String {
             val raw = Base64.decode(sealedB64, Base64.NO_WRAP)
-            if (raw.size < NONCE_BYTES + 16) throw IllegalStateException("sealed token is too short")
-            val nonce = raw.copyOfRange(0, NONCE_BYTES)
-            val sealed = raw.copyOfRange(NONCE_BYTES, raw.size)
-            return String(open(key, nonce, sealed, aad.toByteArray(StandardCharsets.UTF_8)), StandardCharsets.UTF_8)
+            val plain = Envelope.open(key, raw, aad.toByteArray(StandardCharsets.UTF_8))
+            return String(plain, StandardCharsets.UTF_8)
         }
 
-        private fun seal(key: ByteArray, plain: ByteArray, aad: ByteArray): Pair<ByteArray, ByteArray> {
-            val nonce = ByteArray(NONCE_BYTES)
-            RANDOM.nextBytes(nonce)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-            cipher.updateAAD(aad)
-            return Pair(nonce, cipher.doFinal(plain))
+        fun requestJson(
+            method: String,
+            path: String,
+            headers: Map<String, String>,
+            body: ByteArray,
+            token: String
+        ): String {
+            val headerObject = JSONObject()
+            for ((name, value) in headers) headerObject.put(name, value)
+            return JSONObject()
+                .put("method", method)
+                .put("path", path)
+                .put("headers", headerObject)
+                .put("body", base64(body))
+                .put("token", token)
+                .toString()
         }
 
-        private fun open(key: ByteArray, nonce: ByteArray, sealed: ByteArray, aad: ByteArray): ByteArray {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
-            cipher.updateAAD(aad)
-            return cipher.doFinal(sealed)
-        }
+        fun base64(value: ByteArray): String = Base64.encodeToString(value, Base64.NO_WRAP)
 
-        private fun sha256(raw: ByteArray): ByteArray {
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-            return digest.digest(raw)
-        }
-
-        private fun hkdf(secret: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-            val prk = hmac(salt, secret)
-            val output = ByteArray(length)
-            var offset = 0
-            var block = ByteArray(0)
-            var counter = 1
-            while (offset < length) {
-                val mac = Mac.getInstance("HmacSHA256")
-                mac.init(SecretKeySpec(prk, "HmacSHA256"))
-                mac.update(block)
-                mac.update(info)
-                mac.update(counter.toByte())
-                block = mac.doFinal()
-                val take = minOf(block.size, length - offset)
-                System.arraycopy(block, 0, output, offset, take)
-                offset += take
-                counter++
-            }
-            return output
-        }
-
-        private fun hmac(key: ByteArray, data: ByteArray): ByteArray {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(key, "HmacSHA256"))
-            return mac.doFinal(data)
-        }
-
-        private fun randomHex(bytes: Int): String {
+        fun randomHex(bytes: Int): String {
             val raw = ByteArray(bytes)
             RANDOM.nextBytes(raw)
             return raw.joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it.toInt() and 0xff) }

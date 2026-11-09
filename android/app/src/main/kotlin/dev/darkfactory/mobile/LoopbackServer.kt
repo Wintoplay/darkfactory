@@ -333,7 +333,7 @@ internal class LoopbackServer(
             http.setRequestProperty("Accept", "application/x-df-e2ee")
             http.setRequestProperty("X-DF-E2EE", "1")
             http.setRequestProperty("User-Agent", "DarkFactory-Android/0.1")
-            val encoded = sealed.first.toByteArray(StandardCharsets.UTF_8)
+            val encoded = sealed.envelope.toByteArray(StandardCharsets.UTF_8)
             http.setFixedLengthStreamingMode(encoded.size)
             http.outputStream.use { upstream -> upstream.write(encoded) }
 
@@ -344,8 +344,22 @@ internal class LoopbackServer(
                 } catch (_: Exception) {
                     ""
                 }
+                val refusalCode = try {
+                    JSONObject(detail).optString("code", "")
+                } catch (_: Exception) {
+                    ""
+                }
                 if (status == 401) {
-                    onLogout?.invoke("This device was revoked. Pair again.")
+                    onLogout?.invoke(
+                        "This device was signed out or revoked. Forget the host and pair again."
+                    )
+                } else if (status == 403 && refusalCode == "e2ee_suite_downgrade") {
+                    writeError(
+                        output,
+                        403,
+                        "e2ee_suite_downgrade",
+                        "This host requires hybrid encryption. Update DarkFactory, forget the host, and pair again."
+                    )
                 } else if (status == 429) {
                     // The daemon's envelope budget is transient. Pass the status
                     // through so the page can retry the same input batch instead
@@ -373,37 +387,45 @@ internal class LoopbackServer(
             }
 
             val input = http.inputStream
-            var frameIndex = 0
             var logout = false
             var innerStatus = 0
-            while (true) {
-                val length = readFrameLength(input) ?: break
-                if (length < 28 || length > MAX_FRAME) throw IOException("invalid encrypted frame length")
-                val frame = readExactly(input, length)
-                val plain = cipher.openFrame(frame, sealed.second, frameIndex)
-                if (frameIndex == 0) {
-                    val head = JSONObject(String(plain, StandardCharsets.UTF_8))
-                    innerStatus = head.optInt("status", 500)
-                    val responseHeaders = mutableMapOf<String, String>()
-                    head.optJSONObject("headers")?.let { objectHeaders ->
-                        for (name in objectHeaders.keys()) {
-                            responseHeaders[name] = objectHeaders.optString(name, "")
+            EncryptedResponseReader.read(
+                input,
+                object : EncryptedResponseReader.Opener {
+                    override fun openData(frame: ByteArray, index: Int): ByteArray = sealed.openFrame(frame, index)
+                    override fun openEnd(frame: ByteArray, index: Int): ByteArray? = sealed.openEndFrame(frame, index)
+                },
+                object : EncryptedResponseReader.Listener {
+                    override fun onHead(plain: ByteArray) {
+                        val head = JSONObject(String(plain, StandardCharsets.UTF_8))
+                        innerStatus = head.optInt("status", 500)
+                        val responseHeaders = mutableMapOf<String, String>()
+                        head.optJSONObject("headers")?.let { objectHeaders ->
+                            for (name in objectHeaders.keys()) {
+                                responseHeaders[name] = objectHeaders.optString(name, "")
+                            }
+                        }
+                        localWrite {
+                            writeHead(output, innerStatus, reasonPhrase(innerStatus), responseHeaders, true)
+                        }
+                        headWritten = true
+                        if (innerStatus == 401 ||
+                            (innerStatus == 204 && target == "/api/v1/open/logout")
+                        ) {
+                            logout = true
                         }
                     }
-                    localWrite {
-                        writeHead(output, innerStatus, reasonPhrase(innerStatus), responseHeaders, true)
+
+                    override fun onBody(plain: ByteArray) {
+                        if (plain.isNotEmpty()) {
+                            localWrite { writeChunk(output, plain, plain.size) }
+                        }
                     }
-                    headWritten = true
-                    if (innerStatus == 401 ||
-                        (innerStatus == 204 && target == "/api/v1/open/logout")
-                    ) {
-                        logout = true
-                    }
-                } else if (plain.isNotEmpty()) {
-                    localWrite { writeChunk(output, plain, plain.size) }
-                }
-                frameIndex++
-            }
+                },
+                MAX_FRAME,
+                -1,
+                sealed.hasAuthenticatedEndMarker
+            )
             if (!headWritten) throw IOException("encrypted response had no head frame")
             localWrite {
                 writeChunkEnd(output)
@@ -421,9 +443,9 @@ internal class LoopbackServer(
         } catch (error: IllegalStateException) {
             onLogout?.invoke("The encrypted host identity or reply was invalid. Pair again.")
         } catch (error: IOException) {
-            // Upstream EOF or a network drop is normal for streams. End the
-            // local body and let the page reconnect; verifyHost still pins the
-            // daemon key before the next launch.
+            // A framing or upstream I/O error after headers must leave the
+            // local chunked body incomplete. The WebView can then treat the
+            // response as failed and reconnect instead of accepting truncation.
             if (!headWritten) {
                 try {
                     writeError(
@@ -434,15 +456,6 @@ internal class LoopbackServer(
                     )
                 } catch (_: Exception) {
                     // The local client is gone too.
-                }
-            } else {
-                try {
-                    localWrite {
-                        writeChunkEnd(output)
-                        output.flush()
-                    }
-                } catch (_: LocalClientGone) {
-                    // Ignore: the page already closed the stream.
                 }
             }
         } catch (error: Exception) {
@@ -472,35 +485,6 @@ internal class LoopbackServer(
             block()
         } catch (error: IOException) {
             throw LocalClientGone()
-        }
-    }
-
-    private fun readFrameLength(input: InputStream): Int? {
-        val first = input.read()
-        if (first == -1) return null
-        val raw = ByteArray(4)
-        raw[0] = first.toByte()
-        readExactlyInto(input, raw, 1, 3)
-        return ((raw[0].toInt() and 0xff) shl 24) or
-            ((raw[1].toInt() and 0xff) shl 16) or
-            ((raw[2].toInt() and 0xff) shl 8) or
-            (raw[3].toInt() and 0xff)
-    }
-
-    private fun readExactly(input: InputStream, length: Int): ByteArray {
-        val raw = ByteArray(length)
-        readExactlyInto(input, raw, 0, length)
-        return raw
-    }
-
-    private fun readExactlyInto(input: InputStream, buffer: ByteArray, offset: Int, length: Int) {
-        var at = offset
-        var left = length
-        while (left > 0) {
-            val read = input.read(buffer, at, left)
-            if (read < 0) throw IOException("encrypted frame ended early")
-            at += read
-            left -= read
         }
     }
 

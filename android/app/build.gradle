@@ -39,6 +39,7 @@ android {
         applicationId 'dev.darkfactory.mobile'
         minSdk 26
         targetSdk 34
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
         def resolvedCode = (findProperty('dfVersionCode') ?: defaultVersionCode).toString().toInteger()
         def resolvedName = findProperty('dfVersionName') ?: defaultVersionName
         versionCode resolvedCode
@@ -71,14 +72,27 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-
     lint {
         abortOnError true
         checkReleaseBuilds false
     }
+}
+
+// Kotlin 2.4 rejects the removed android.kotlinOptions DSL; the Java compile
+// options above still set the bytecode target for javac.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+    androidTestCompileOnly files(
+        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.base.jar",
+        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.runner.jar",
+        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.mock.jar"
+    )
 }
 
 // The daemon and the Android client render the same UI. Copy it at build time
@@ -98,4 +112,37 @@ tasks.register('syncWebAssets', Sync) {
 android.sourceSets.main.assets.srcDirs += [webGenerated.get().asFile]
 tasks.named('preBuild').configure {
     dependsOn 'syncWebAssets'
+    dependsOn 'verifyBouncyCastleArtifact'
+}
+
+tasks.register('verifyBouncyCastleArtifact') {
+    doLast {
+        def packages = new TreeMap()
+        ['debugRuntimeClasspath', 'releaseRuntimeClasspath'].each { configurationName ->
+            def artifacts = configurations.getByName(configurationName).resolvedConfiguration.resolvedArtifacts
+            artifacts.each { artifact ->
+                def id = artifact.moduleVersion.id
+                packages["${id.group}:${artifact.name}:${id.version}".toString()] = [
+                    package: [ecosystem: 'Maven', name: "${id.group}:${artifact.name}".toString()],
+                    version: id.version
+                ]
+            }
+            def providers = artifacts.findAll {
+                it.moduleVersion.id.group == 'org.bouncycastle' && it.name == 'bcprov-jdk18on'
+            }
+            if (providers.size() != 1 || providers[0].moduleVersion.id.version != '1.86') {
+                throw new GradleException("Expected exactly the pinned Bouncy Castle 1.86 provider in ${configurationName}")
+            }
+            def sha256 = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(providers[0].file.bytes)
+                .collect { String.format('%02x', it & 0xff) }
+                .join()
+            if (sha256 != '2af190b300cbb0b35e248ccf5f4a06b6072030aeb3da7a98ec73abe5b4cb371f') {
+                throw new GradleException("Bouncy Castle provider SHA-256 mismatch in ${configurationName}")
+            }
+        }
+        def report = layout.buildDirectory.file('reports/security-runtime-dependencies.json').get().asFile
+        report.parentFile.mkdirs()
+        report.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(packages.values()))
+    }
 }

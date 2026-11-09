@@ -173,6 +173,9 @@ type pairGrant struct {
 	ExpiresAt time.Time
 	Label     string
 	Scope     string
+	// MinSuite is the envelope policy captured when the code was minted, so a
+	// config change cannot retarget a code that is already in flight.
+	MinSuite int
 }
 
 type pairWindow struct {
@@ -1276,6 +1279,34 @@ type pairCodeResponse struct {
 	Terminal  bool      `json:"terminal"`
 }
 
+type pairRequest struct {
+	Code            string `json:"code"`
+	SealedCode      string `json:"sealedCode"`
+	ClientPublicKey string `json:"clientPublicKey"`
+	V               int    `json:"v"`
+	Suite           string `json:"suite"`
+	Epk             string `json:"epk"`
+	KEM             string `json:"kem"`
+}
+
+func parsePairRequest(raw []byte) (pairRequest, error) {
+	var request pairRequest
+	if err := decodeStrictJSON(raw, maxBody, &request); err != nil {
+		return pairRequest{}, err
+	}
+	if request.V != 0 && request.V != e2eeVersion && request.V != e2eeVersionV2 {
+		return pairRequest{}, errors.New("unsupported pair version")
+	}
+	if request.V == e2eeVersionV2 {
+		if request.Suite != e2eeSuiteV2 || request.Code != "" {
+			return pairRequest{}, errors.New("v2 pair must use the supported suite and seal its code")
+		}
+	} else if request.Suite != "" || strings.TrimSpace(request.SealedCode) != "" {
+		return pairRequest{}, errors.New("sealed pair code requires v2")
+	}
+	return request, nil
+}
+
 func browserOrigin(r *http.Request) string {
 	scheme := "http"
 	if isSecureRequest(r) {
@@ -1417,7 +1448,7 @@ func (s *Server) handlePairCode(w http.ResponseWriter, r *http.Request) {
 			delete(s.pairCodes, key)
 		}
 	}
-	s.pairCodes[s.hashSecret(normalizePairCode(code))] = pairGrant{ExpiresAt: expiry, Label: label, Scope: scope}
+	s.pairCodes[s.hashSecret(normalizePairCode(code))] = pairGrant{ExpiresAt: expiry, Label: label, Scope: scope, MinSuite: s.minSuite()}
 	s.openMu.Unlock()
 
 	writeJSON(w, http.StatusOK, pairCodeResponse{
@@ -1470,17 +1501,69 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		s.refuse(w, r, codePairRateLimited, "")
 		return
 	}
-	var body struct {
-		Code            string `json:"code"`
-		ClientPublicKey string `json:"clientPublicKey"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
+	defer r.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+	if err != nil {
 		s.refuse(w, r, codeInvalidRequest, err.Error())
 		return
 	}
-	var clientPublic *ecdh.PublicKey
-	clientPublicB64 := ""
-	if strings.TrimSpace(body.ClientPublicKey) != "" {
+	body, err := parsePairRequest(raw)
+	if err != nil {
+		s.refuse(w, r, codeInvalidRequest, err.Error())
+		return
+	}
+	if body.V != 0 && body.V != e2eeVersion && body.V != e2eeVersionV2 {
+		s.refuse(w, r, codeInvalidRequest, "unsupported e2ee version")
+		return
+	}
+
+	requestedSuite := strings.TrimSpace(body.Suite)
+	v2 := body.V == e2eeVersionV2 || requestedSuite != ""
+	var (
+		clientPublic    *ecdh.PublicKey
+		clientPublicB64 string
+		epkRaw          []byte
+		kemRaw          []byte
+		pairCode        = body.Code
+	)
+	switch {
+	case v2:
+		if s.e2ee == nil {
+			s.refuse(w, r, codeE2EEUnavailable, "")
+			return
+		}
+		if body.V != e2eeVersionV2 || requestedSuite != e2eeSuiteV2 {
+			s.refuse(w, r, codeInvalidRequest, "unsupported e2ee suite")
+			return
+		}
+		if strings.TrimSpace(body.ClientPublicKey) != "" {
+			s.refuse(w, r, codeInvalidRequest, "a v2 pairing cannot carry a client key")
+			return
+		}
+		if strings.TrimSpace(body.Code) != "" {
+			s.refuse(w, r, codeInvalidRequest, "v2 pairing must seal the one-time code")
+			return
+		}
+		var err error
+		epkRaw, kemRaw, err = parseE2EEV2PairMaterial(body.Epk, body.KEM)
+		if err != nil {
+			s.refuse(w, r, codeInvalidRequest, err.Error())
+			return
+		}
+		// Reject low-order X25519 inputs before consuming the one-time grant or
+		// creating a device row. ECDH reports an all-zero shared secret as an
+		// error, which otherwise used to happen only after persistence.
+		sealedCode := strings.TrimSpace(body.SealedCode)
+		if sealedCode == "" {
+			s.refuse(w, r, codeInvalidRequest, "v2 pairing requires sealedCode")
+			return
+		}
+		pairCode, err = openE2EEPairCodeV2(s.e2ee, s.hostID(), epkRaw, kemRaw, sealedCode)
+		if err != nil {
+			s.refuse(w, r, codeInvalidRequest, "v2 pair key material did not authenticate")
+			return
+		}
+	case strings.TrimSpace(body.ClientPublicKey) != "":
 		if s.e2ee == nil {
 			s.refuse(w, r, codeE2EEUnavailable, "")
 			return
@@ -1493,7 +1576,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		clientPublic = parsed
 		clientPublicB64 = canonical
 	}
-	code := normalizePairCode(body.Code)
+	code := normalizePairCode(pairCode)
 	if len(code) != 8 {
 		s.refuse(w, r, codePairInvalid, "")
 		return
@@ -1509,10 +1592,20 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		s.refuse(w, r, codePairInvalid, "")
 		return
 	}
+	// Host policy is the anchor: a client claim cannot lower the suite of a
+	// code that was minted under a stricter minimum.
+	if grant.MinSuite >= e2eeVersionV2 && !v2 {
+		s.refuse(w, r, codeE2EESuiteDowngrade, "")
+		return
+	}
+	suite := ""
+	if v2 {
+		suite = e2eeSuiteV2
+	}
 	// A sealed native pairing must not leak the same token in a Set-Cookie
 	// header; only the legacy browser/native response gets the cookie.
 	token, deviceID, expiry, err := s.mintBrowserSessionWithKey(
-		w, r, grant.Label, grant.Scope, clientPublicB64, clientPublic == nil,
+		w, r, grant.Label, grant.Scope, clientPublicB64, suite, !v2 && clientPublic == nil,
 	)
 	if err != nil {
 		s.fail(w, r, err)
@@ -1526,7 +1619,37 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		"scope":     normalizeScope(grant.Scope),
 		"terminal":  scopeHasWorkspace(grant.Scope),
 	}
-	if clientPublic != nil {
+	switch {
+	case v2:
+		_, s2c, transcript, err := deriveE2EEPairKeysV2(s.e2ee, s.hostID(), deviceID, epkRaw, kemRaw)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		payload, err := json.Marshal(e2eeSealedPayload{
+			Token:     token,
+			DeviceID:  deviceID,
+			HostID:    s.hostID(),
+			Suite:     e2eeSuiteV2,
+			ExpiresAt: expiry,
+		})
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		sealed, err := sealE2EECombined(s2c, payload, transcript)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		response["e2ee"] = e2eeVersionV2
+		response["suite"] = e2eeSuiteV2
+		response["hostPublicKey"] = s.e2ee.publicB64
+		response["fingerprint"] = s.e2ee.fingerprint
+		response["fingerprintV2"] = s.e2ee.fingerprintV2
+		response["bundle"] = s.e2ee.bundle
+		response["sealedPayload"] = sealed
+	case clientPublic != nil:
 		_, s2c, err := deriveE2EEKeys(s.e2ee.private, clientPublic, s.e2ee.publicB64, clientPublicB64)
 		if err != nil {
 			s.fail(w, r, err)
@@ -1545,7 +1668,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		response["hostPublicKey"] = s.e2ee.publicB64
 		response["fingerprint"] = s.e2ee.fingerprint
 		response["sealedToken"] = sealed
-	} else {
+	default:
 		response["token"] = token
 	}
 	writeJSON(w, http.StatusOK, response)
@@ -1628,11 +1751,11 @@ func (s *Server) allowE2EE(r *http.Request) bool {
 }
 
 func (s *Server) mintBrowserSession(w http.ResponseWriter, r *http.Request, label, scope string) (string, time.Time, error) {
-	token, _, expiry, err := s.mintBrowserSessionWithKey(w, r, label, scope, "", true)
+	token, _, expiry, err := s.mintBrowserSessionWithKey(w, r, label, scope, "", "", true)
 	return token, expiry, err
 }
 
-func (s *Server) mintBrowserSessionWithKey(w http.ResponseWriter, r *http.Request, label, scope, e2eePublicKey string, setCookie bool) (string, string, time.Time, error) {
+func (s *Server) mintBrowserSessionWithKey(w http.ResponseWriter, r *http.Request, label, scope, e2eePublicKey, e2eeSuite string, setCookie bool) (string, string, time.Time, error) {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", "", time.Time{}, err
@@ -1658,6 +1781,7 @@ func (s *Server) mintBrowserSessionWithKey(w http.ResponseWriter, r *http.Reques
 		SecretTag:     s.secretTag(),
 		Terminal:      scopeHasWorkspace(scope),
 		E2EEPublicKey: e2eePublicKey,
+		E2EESuite:     e2eeSuite,
 	}
 	s.pruneBrowsers(time.Now())
 	if s.store != nil {

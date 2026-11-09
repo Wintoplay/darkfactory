@@ -1508,6 +1508,7 @@ func TestBrowserCookieSurvivesServerRestart(t *testing.T) {
 
 func newPairServer(t *testing.T, cfg config.Config) *httptest.Server {
 	t.Helper()
+	cfg.E2EEMinSuite = 1 // These pairing fixtures exercise legacy plaintext-browser compatibility.
 	st, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)

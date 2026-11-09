@@ -378,8 +378,8 @@ POST   /api/v1/runs/{id}/steps/{ordinal}/answer
 POST   /api/v1/runs/{id}/replan         target; not routed yet
 POST   /api/v1/pair/code                authenticated, mints a pairing code
 POST   /api/v1/pair                     code-gated, unauthenticated
-GET    /api/v1/e2ee/host-key            public host identity metadata
-POST   /api/v1/e2ee                     sealed native transport
+GET    /api/v1/e2ee/host-key            public identity: signed bundle, v1+v2
+POST   /api/v1/e2ee                     sealed native transport (v1 or v2 suite)
 POST   /api/v1/device-keys              register a device public key
 POST   /api/v1/device-keys/challenge    device-key bootstrap
 POST   /api/v1/device-keys/verify       device-key bootstrap
@@ -794,8 +794,21 @@ not claim to contain a same-uid agent.
   gates are target-state and are not in this build.
 - E2EE replay records start with the first request after the upgrade: a request
   accepted by an older daemon was never recorded and cannot be rejected later.
-  The daemon-side store and httptest restart tests, and the JVM fingerprint
-  substitution check, are focused evidence. The 2026-11-02 internal review's
+  The native envelope has two suites: v1 (P-256 ECDH) and v2 (X25519 +
+  ML-KEM-768, host policy `--e2ee-min-suite`). The daemon and the Android client
+  implement both; the phone verifies the signed bundle and pins
+  `fingerprintV2`, and a v2 row never falls back. The post-quantum primitives
+  use pinned Bouncy Castle lightweight APIs with a JVM↔Go interop gate and a
+  disposable-daemon run. The minimum defaults to 2. Legacy APKs require an
+  explicit compatibility value of 1, which permits weaker pairing. First-pair
+  fingerprint confirmation precedes transmission of the encrypted pairing code.
+  Completed v2 responses carry an authenticated end marker. These checks do not
+  replace an external cryptographic review. v2 does not add forward
+  secrecy against host-key theft, and the host identity is still plaintext in
+  `state.db`.
+  The daemon-side store and httptest restart tests, the JVM fingerprint
+  substitution check, the PQ interop gate and the live envelope run are focused
+  evidence. The 2026-11-02 internal review's
   confirmed defects (encoded nested envelope, unbounded replay sweep) are fixed
   and covered by tests; its hardening gaps are either fixed or recorded as
   accepted/deferred limits in the review's resolution table. This is still not

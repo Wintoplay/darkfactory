@@ -29,15 +29,29 @@ internal class TokenStore(context: Context) {
         val clientPrivateKey: String = "",
         val clientPublicKey: String = "",
         val fingerprint: String = "",
+        /** Empty means the legacy P-256 suite; otherwise [HostKey.SUITE]. */
+        val suite: String = "",
+        /** The signed v2 bundle exactly as received, verified on every load. */
+        val hostBundle: String = "",
+        val fingerprintV2: String = "",
         val label: String = "",
         val scope: String = "",
         val lastSeenAt: Long = 0L
     ) {
+        val isHybrid: Boolean
+            get() = suite == HostKey.SUITE
+
+        /**
+         * A v2 row keeps no client key because every request carries an
+         * ephemeral one; a v1 row still needs its P-256 pair. Both need the
+         * pinned host key, and v2 also needs the signed bundle it pins.
+         */
         val hasE2EE: Boolean
-            get() = deviceId.isNotEmpty() &&
-                hostPublicKey.isNotEmpty() &&
-                clientPrivateKey.isNotEmpty() &&
-                clientPublicKey.isNotEmpty()
+            get() {
+                if (deviceId.isEmpty() || hostPublicKey.isEmpty()) return false
+                if (isHybrid) return hostBundle.isNotEmpty() && fingerprintV2.isNotEmpty()
+                return clientPrivateKey.isNotEmpty() && clientPublicKey.isNotEmpty()
+            }
     }
 
     data class Registry(
@@ -66,8 +80,49 @@ internal class TokenStore(context: Context) {
             lastSeenAt = now
         )
         val hosts = current.hosts.toMutableList()
-        val index = hosts.indexOfFirst { it.hostId == stored.hostId }
+        val normalizedBase = NativePair.normalizeBase(stored.base)
+        val matches = hosts.withIndex().filter { (_, existing) ->
+            existing.hostId == stored.hostId ||
+                (existing.hostPublicKey.isNotEmpty() && existing.hostPublicKey == stored.hostPublicKey) ||
+                runCatching { NativePair.normalizeBase(existing.base) == normalizedBase }.getOrDefault(false)
+        }
+        if (matches.size > 1) {
+            throw IllegalStateException("More than one saved host matches this identity. Explicitly Forget the duplicate rows first.")
+        }
+        val index = matches.firstOrNull()?.index ?: -1
         if (index >= 0) {
+            val previous = hosts[index]
+            HostPinPolicy.requireHostId(previous.hostId, stored.hostId)
+            HostPinPolicy.requireReplacement(
+                previous.hostPublicKey,
+                previous.suite,
+                previous.fingerprint,
+                previous.fingerprintV2,
+                stored.hostPublicKey,
+                stored.suite,
+                stored.fingerprint,
+                stored.fingerprintV2
+            )
+            if (previous.isHybrid && stored.isHybrid) {
+                val previousBundle = HostBundle.stored(previous.hostBundle)
+                previousBundle.requireStoredPin(
+                    previous.hostPublicKey,
+                    previous.suite,
+                    previous.fingerprintV2
+                )
+                val replacementBundle = HostBundle.stored(stored.hostBundle)
+                replacementBundle.requireStoredPin(
+                    stored.hostPublicKey,
+                    stored.suite,
+                    stored.fingerprintV2
+                )
+                HostPinPolicy.requireBundleAdvance(
+                    previousBundle.epoch,
+                    previousBundle.bundleHash,
+                    replacementBundle.epoch,
+                    replacementBundle.bundleHash
+                )
+            }
             hosts[index] = stored
         } else {
             if (hosts.size >= MAX_HOSTS) {
@@ -219,6 +274,9 @@ internal class TokenStore(context: Context) {
             .put("clientPrivateKey", connection.clientPrivateKey)
             .put("clientPublicKey", connection.clientPublicKey)
             .put("fingerprint", connection.fingerprint)
+            .put("suite", connection.suite)
+            .put("hostBundle", connection.hostBundle)
+            .put("fingerprintV2", connection.fingerprintV2)
             .put("label", connection.label)
             .put("scope", connection.scope)
             .put("lastSeenAt", connection.lastSeenAt)
@@ -240,6 +298,9 @@ internal class TokenStore(context: Context) {
             clientPrivateKey = json.optString("clientPrivateKey", ""),
             clientPublicKey = json.optString("clientPublicKey", ""),
             fingerprint = json.optString("fingerprint", ""),
+            suite = json.optString("suite", ""),
+            hostBundle = json.optString("hostBundle", ""),
+            fingerprintV2 = json.optString("fingerprintV2", ""),
             label = json.optString("label", "").ifEmpty { defaultLabel(base) },
             scope = json.optString("scope", ""),
             lastSeenAt = json.optLong("lastSeenAt", 0L)

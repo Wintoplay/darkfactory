@@ -82,6 +82,19 @@ adb install -r -g firefox.apk
 adb shell am start -a android.intent.action.VIEW -d "http://127.0.0.1:8787/" -n org.mozilla.firefox/.App
 ```
 
+## Non-device gates
+
+Two checks run the client's real Java classes without an emulator, so a broken
+v2 byte layout fails in seconds instead of on a phone:
+
+```sh
+make android-pq-check   # Keccak/X25519/ML-KEM vs Go vectors; bundle tamper; transcripts, keys, AADs, fingerprintV2
+make android-pq-live    # disposable --e2ee-min-suite=2 daemon: pair, sealed token, encrypted /state, downgrade + replay refusal
+```
+
+They do not replace the smoke test below: no gate here proves the WebView, the
+Keystore, the notification service, or a real radio path.
+
 ## Native app smoke test
 
 Build with JDK 21 and Build-Tools 35.0.0:
@@ -98,15 +111,26 @@ adb shell am start -n dev.darkfactory.mobile/.MainActivity
 ```
 
 The acceptance sequence is: pair once (by typed URL/code or by scanning the
-desktop QR with the phone camera), compare the native host-key fingerprint with
-the desktop **Pair phone** dialog, load the fleet from the bundled UI,
+desktop QR with the phone camera), compare the native host-key fingerprint and
+the suite label (`hybrid X25519 + ML-KEM-768` or `P-256 (legacy)`) with the
+desktop **Pair phone** dialog, load the fleet from the bundled UI,
 create/attach a PTY, send input, stream output through `/api/v1/e2ee`, open an
 OpenCode chat, rotate and background/foreground the app, verify the token is
 absent from WebView storage and logs, revoke the device from the desktop, and
-confirm the app returns to the native pair screen. Then start a fresh daemon
-with a different host key while the app is stopped and confirm the saved pin is
-refused before the WebView loads. A `200` from `/state` alone is not evidence.
-Record screenshots and the exact commands in a dated artifact folder.
+confirm the app returns to the native pair screen without discarding the saved
+host. Then start a fresh daemon with a different host key while the app is
+stopped and confirm the saved pin is refused before the WebView loads and the
+host row survives; Forget is the only action that removes it. A `200` from
+`/state` alone is not evidence. Record screenshots and the exact commands in a
+dated artifact folder.
+
+For a v2 device, also start the daemon with `--e2ee-min-suite=2` and confirm a
+v1-only client is refused at pairing and at the envelope. That test belongs on a
+disposable XDG root, not the operator's daemon. The 2026-11-09 emulator run did
+this on `dfphone` and recorded the result in
+`test/artifacts/e2ee-v2-android/`;
+it paired over v2, loaded `/state`, and kept the pin after the host identity
+changed, but did not exercise PTY streaming under v2.
 
 The QR path can be exercised without a camera by sending the same URI:
 

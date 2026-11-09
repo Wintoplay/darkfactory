@@ -88,8 +88,8 @@ func main() {
 
 func usage() {
 	fmt.Fprint(os.Stderr, `Usage:
-  darkfactory serve [--listen addr] [--ring-bytes n] [--allow-remote] [--insecure-remote] [--allow-public] [--idle-exit 30m] [--debug]
-  darkfactory launch [--listen addr] [--idle-exit 30m] [--no-browser]
+  darkfactory serve [--listen addr] [--ring-bytes n] [--allow-remote] [--insecure-remote] [--allow-public] [--e2ee-min-suite 1|2] [--idle-exit 30m] [--debug]
+  darkfactory launch [--listen addr] [--idle-exit 30m] [--desktop] [--no-browser]
   darkfactory session-host [--socket path] [--ring-bytes n] [--stop]
   darkfactory native-attach --listen addr --credential-fd n session-id
   darkfactory open [--listen addr] [--no-browser]
@@ -598,12 +598,20 @@ func shortHash(hash string) string {
 }
 
 // runLaunch is what a desktop entry calls: make sure the daemon is up, then
-// open the browser. `serve` owns the PTYs and outlives the window, so launch
+// show the workspace. `serve` owns the PTYs and outlives the window, so launch
 // starts it detached and never waits on it.
+//
+// --desktop hands the workspace to the optional native shell when
+// darkfactory-desktop is installed next to this binary (or on PATH) and falls
+// back to the browser when it is not. The packaged desktop entry asks for it,
+// so a machine that built the shell does not silently regress to the browser,
+// and a package-only install still works. --no-browser never opens a client:
+// the shell's own autostart runs `launch --no-browser` and must not recurse.
 func runLaunch(args []string) error {
 	fs := flag.NewFlagSet("launch", flag.ContinueOnError)
 	listen := fs.String("listen", "", "daemon listen address (defaults to config)")
-	noBrowser := fs.Bool("no-browser", false, "print the URL without opening a browser")
+	desktop := fs.Bool("desktop", false, "open darkfactory-desktop when it is installed, else the browser")
+	noBrowser := fs.Bool("no-browser", false, "print the URL without opening a browser or the desktop window")
 	idleExit := fs.Duration("idle-exit", 0, "exit the daemon after this long with no HTTP activity (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -630,11 +638,59 @@ func runLaunch(args []string) error {
 			return err
 		}
 	}
+	if *desktop && !*noBrowser {
+		if exe, ok := desktopClient(); ok {
+			return runDesktopClient(exe, base)
+		}
+		fmt.Fprintln(os.Stderr, "darkfactory: darkfactory-desktop is not installed; opening the browser")
+	}
 	openArgs := []string{"--listen", cfg.Listen}
 	if *noBrowser {
 		openArgs = append(openArgs, "--no-browser")
 	}
 	return runOpen(openArgs)
+}
+
+// desktopClient finds the optional Wails shell. A sibling of the running
+// binary wins so a local install does not depend on PATH order; otherwise the
+// usual executable search decides. A file that is not executable is ignored.
+func desktopClient() (string, bool) {
+	exe, _ := os.Executable()
+	return desktopClientFor(exe)
+}
+
+// desktopClientFor separates the install layout from the search so tests can
+// pass a fake executable directory without touching the real one.
+func desktopClientFor(exe string) (string, bool) {
+	if exe != "" {
+		if p, ok := executableFile(filepath.Join(filepath.Dir(exe), "darkfactory-desktop")); ok {
+			return p, true
+		}
+	}
+	p, err := exec.LookPath("darkfactory-desktop")
+	if err != nil {
+		return "", false
+	}
+	return executableFile(p)
+}
+
+// executableFile accepts a regular file with an execute bit. It is separate
+// from desktopClient so the lookup is testable without a real PATH.
+func executableFile(path string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return "", false
+	}
+	return path, true
+}
+
+// runDesktopClient stays in the foreground while the window is open. The
+// daemon was already detached above, so closing the window leaves the PTYs
+// and the session host alone, exactly like closing a browser tab.
+func runDesktopClient(exe, base string) error {
+	cmd := exec.Command(exe, "--url", base)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
 }
 
 // daemonHealthy is the unauthenticated liveness check; it says nothing about
@@ -818,6 +874,7 @@ func serve(args []string) error {
 	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback bind")
 	insecureRemote := fs.Bool("insecure-remote", false, "allow plaintext non-loopback (unsafe)")
 	allowPublic := fs.Bool("allow-public", cfg.AllowPublicSources, "accept direct peers from public addresses (unsafe; use a TLS gateway)")
+	e2eeMinSuite := fs.Int("e2ee-min-suite", cfg.E2EEMinSuite, "minimum native E2EE suite: 2 = hybrid (default), 1 = legacy P-256 compatibility")
 	idleExit := fs.Duration("idle-exit", 0, "exit after this long with no HTTP activity (0 disables)")
 	debug := fs.Bool("debug", false, "log every HTTP request")
 	policyOverride := fs.String("policy", "", "policy file (defaults to the config directory)")
@@ -832,9 +889,13 @@ func serve(args []string) error {
 	if *idleExit < 0 {
 		return fmt.Errorf("--idle-exit must not be negative")
 	}
+	if *e2eeMinSuite != 1 && *e2eeMinSuite != 2 {
+		return fmt.Errorf("--e2ee-min-suite must be 1 or 2")
+	}
 	cfg.Listen = *listen
 	cfg.RingBytes = *ringBytes
 	cfg.AllowPublicSources = *allowPublic
+	cfg.E2EEMinSuite = *e2eeMinSuite
 	cfg.ReadHeaderTimeout = *readHeaderTimeout
 	cfg.ReadTimeout = *readTimeout
 	cfg.WriteTimeout = *writeTimeout

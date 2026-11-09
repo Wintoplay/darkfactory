@@ -25,6 +25,7 @@ const goldenRefusals = `capability_scope 403
 device_not_found 404
 device_rate_limited 429
 e2ee_rate_limited 429
+e2ee_suite_downgrade 403
 e2ee_unavailable 503
 host_admin 403
 internal_error 500
@@ -472,6 +473,7 @@ func createRepoWorkspace(t *testing.T, srv *httptest.Server) string {
 func newRefusalServer(t *testing.T, mutate func(*Server)) (*httptest.Server, *Server) {
 	t.Helper()
 	cfg := config.Default()
+	cfg.E2EEMinSuite = 1 // Legacy envelope tests opt in explicitly.
 	cfg.Token = "test-token"
 	cfg.WorktreeRoot = t.TempDir()
 	st, err := store.Open(t.TempDir() + "/state.db")

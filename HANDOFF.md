@@ -1,5 +1,94 @@
 # Current release handoff
 
+## Hybrid native transport hardening (2026-11-09)
+
+The working tree closes the findings from the hybrid E2EE review. It is not
+installed on the operator stack. The daemon and updated Android APK must ship
+together; this revision changes the unreleased v2 pairing and completion wire.
+The minimum suite now defaults to 2. Explicit `--e2ee-min-suite=1` retains legacy
+compatibility and its weaker guarantees. New Android pairing requires a valid
+hybrid bundle even when a transport strips every v2 advertisement; previously
+saved v1 connections require that explicit host compatibility setting.
+
+The phone confirms the calculated, suite-bound fingerprint before sending a
+pairing request. V2 sends `sealedCode`, encrypted to the confirmed hybrid bundle
+and bound to the host and exact ephemeral material, rather than a visible code.
+Known pins and bundle epochs are checked before transmission as well as at
+registry save. Invalid material cannot consume the code or create an orphan
+device. Unknown versions and suites fail closed. A persisted empty or malformed
+host identity cannot silently generate a new pin.
+
+X25519 and ML-KEM now use pinned Bouncy Castle 1.86 lightweight APIs; the custom
+variable-time ladder and ML-KEM arithmetic were removed. JVM and Android builds
+verify the provider artifact. Production code only encapsulates; the provider
+jar also contains other algorithms, including decapsulation, so the APK is no
+longer described as containing no decapsulation implementation. Its license
+notice is in `third_party/bouncycastle/`.
+
+V2 responses require an authenticated end marker. The daemon emits it only on
+normal completion with successful writes. Android rejects missing, reordered,
+modified, oversized, or trailing frames and does not convert a failed upstream
+stream into successful local HTTP completion. Notification bodies are bounded.
+Startup and re-pair paths preserve unusable host rows; explicit Forget is the
+identity-reset action. Bundle epochs cannot roll backward under an existing pin.
+
+Security checks now run on pull requests and pushes: production JVM interop,
+disposable-daemon pairing, protocol fuzz targets, Android compile/lint and
+emulator acceptance, symbolic protocol models, both Go-module advisory scans,
+and the Java/Kotlin/JavaScript inventory. Branch protection must require these
+jobs to prevent bypassing them. `make security-check` is the local protocol gate;
+`test/security/README.md` documents the commands and their scope.
+
+ProVerif 2.05 checks the abstract pairing, key-combiner, and response models.
+Honest-trace queries prevent vacuous success; deliberately broken models must
+produce attack traces. The models cover one exchange under ideal cryptography
+and trusted out-of-band comparison. They do not verify Go/Java code, Android UI,
+side channels, concurrency, expiry, persistent replay, or the algorithms'
+computational security. See `tools/protocolverify/README.md`.
+
+Validation and build provenance are in
+`test/artifacts/security-hardening-2026-11-09/REPORT.md`. The operator daemon,
+desktop, and session host were not installed, restarted, or used for acceptance.
+No physical-phone run or external cryptographic audit is claimed. Static host
+keys still provide no forward secrecy against later host-key theft; private
+identity material remains in `state.db`, and the bundle trust anchor is P-256.
+
+## App-menu entry prefers the native shell again (2026-11-08)
+
+Restoring the launcher after the uninstall leak installed the packaged entry,
+whose `Exec` was `darkfactory launch` — the browser path. The owner's
+hand-written entry had pointed at `darkfactory-desktop`. The session journal
+proves the regression: on 2026-11-07 at 22:35 and 23:16 GNOME launched
+`darkfactory.desktop` and the process logged Wails `Build Info` and
+`darkfactory: navigation guard active`; today at 10:05 the restored entry printed
+a one-time `#code=` browser URL. The deleted file was not in Trash and its old
+backup under `/tmp/user/1000/opencode` was gone, so its exact `Exec` line is not
+recoverable; the behavior is.
+
+`darkfactory launch` now takes `--desktop`. It starts/uses the daemon exactly as
+before, then runs `darkfactory-desktop --url <loopback base>` when that optional
+shell is a sibling of the running binary (preferred) or on `PATH`, and otherwise
+prints one line and opens the browser. `--no-browser` wins over `--desktop` and
+opens nothing: the shell's own autostart runs `launch --no-browser`, so the
+handoff must not recurse. `packaging/darkfactory.desktop` now runs
+`darkfactory launch --desktop`, which keeps a package-only install working
+(browser fallback) and stops a reinstall from clobbering the native-first
+behavior. Tests: `TestExecutableFileNeedsARegularExecutable`,
+`TestDesktopClientPrefersTheSiblingBinary`,
+`TestDesktopClientPassesTheLoopbackURLAndItsExitStatus`. A stub-sibling run of
+`launch --desktop` against the live daemon handed off
+`--url http://127.0.0.1:8787` and exited 0.
+
+Live on this host after `make install` at 10:20: `~/.local/bin/darkfactory` is
+`0.1.0-dev (v0.1.0-rc.5-9-g2d40c8a-dirty)`, and
+`~/.local/share/applications/darkfactory.desktop` carries
+`Exec=darkfactory launch --desktop` with the icon and
+`StartupWMClass=dev.darkfactory.Desktop`. The running daemon pid 7585 and the
+detached session host still execute the previous generation; the new code is
+client-side (`launch`), so no restart was needed and the live PTYs were not
+touched. `v0.1.0-rc.7` artifacts still ship the browser `Exec`; the next release
+picks up `--desktop`.
+
 ## Installer uninstall leak fixed in v0.1.0-rc.7 (2026-11-08)
 
 `v0.1.0-rc.6` shipped an `install.sh` whose `--uninstall` removed

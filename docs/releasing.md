@@ -108,8 +108,10 @@ certificate fingerprint published in the release notes, or build it yourself.
   it to `/usr/lib/systemd/user/`. The tarball ships it under `share/`, and
   `install.sh --desktop` copies it to `~/.config/systemd/user/` with `ExecStart`
   rewritten to wherever the binary landed.
-- `packaging/darkfactory.desktop` runs `darkfactory launch`, so the icon works
-  whether or not the daemon is already running.
+- `packaging/darkfactory.desktop` runs `darkfactory launch --desktop`, so the
+  icon works whether or not the daemon is already running. `--desktop` uses
+  `darkfactory-desktop` when that optional shell is installed beside the daemon
+  or on `PATH`, and falls back to the browser when it is not.
 - `packaging/debian/control.in` is a template: `@VERSION@`, `@ARCH@`,
   `@MAINTAINER@` and `@INSTALLED@` are filled by `make dist`.
 - Windows is not packaged: `internal/session` needs a POSIX PTY and does not

@@ -112,9 +112,13 @@ type Config struct {
 	// because the daemon serves plaintext HTTP and has no TLS of its own: a
 	// public bind belongs behind Tailscale Serve, an SSH tunnel or a TLS
 	// gateway, not on the open internet.
-	AllowPublicSources bool   `json:"allowPublicSources,omitempty"`
-	PublicURL          string `json:"publicURL,omitempty"`
-	OpenCodeURL        string `json:"opencodeURL,omitempty"`
+	AllowPublicSources bool `json:"allowPublicSources,omitempty"`
+	// E2EEMinSuite is the minimum native envelope suite accepted for pairing
+	// and envelope dispatch: 1 is the legacy P-256 scheme, 2 requires the hybrid
+	// X25519 + ML-KEM-768 suite. Suite 1 is an explicit compatibility opt-in.
+	E2EEMinSuite int    `json:"e2eeMinSuite,omitempty"`
+	PublicURL    string `json:"publicURL,omitempty"`
+	OpenCodeURL  string `json:"opencodeURL,omitempty"`
 	// OpenCodeAPIURL is the local OpenCode service the daemon proxies. It is
 	// deliberately separate from OpenCodeURL: the link may be a Tailscale URL,
 	// while the API credential must stay on loopback.
@@ -145,6 +149,7 @@ func Default() Config {
 		DesktopNotify:        true,
 		Containment:          "off",
 		LedgerRetentionDays:  defaultLedgerRetentionDays,
+		E2EEMinSuite:         2,
 		ReadHeaderTimeout:    defaultReadHeaderTimeout,
 		ReadTimeout:          defaultReadTimeout,
 		WriteTimeout:         defaultWriteTimeout,
@@ -288,6 +293,12 @@ func (c *Config) normalize() error {
 	}
 	if c.LedgerRetentionDays < 0 {
 		return fmt.Errorf("ledgerRetentionDays cannot be negative; use 0 to keep the ledger forever")
+	}
+	if c.E2EEMinSuite == 0 {
+		c.E2EEMinSuite = 2
+	}
+	if c.E2EEMinSuite != 1 && c.E2EEMinSuite != 2 {
+		return fmt.Errorf("e2eeMinSuite must be 1 or 2")
 	}
 	for _, item := range []struct{ field, value string }{
 		{"readHeaderTimeout", c.ReadHeaderTimeout},

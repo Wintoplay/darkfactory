@@ -372,3 +372,34 @@ func TestHTTPTimeouts(t *testing.T) {
 		t.Fatal("a negative header cap was accepted")
 	}
 }
+
+func TestE2EEMinSuite(t *testing.T) {
+	cfg := Default()
+	if cfg.E2EEMinSuite != 2 {
+		t.Fatalf("default e2eeMinSuite = %d, want 2", cfg.E2EEMinSuite)
+	}
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("default config rejected: %v", err)
+	}
+
+	cfg.E2EEMinSuite = 2
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("suite 2 rejected: %v", err)
+	}
+
+	cfg.E2EEMinSuite = 0
+	if err := cfg.normalize(); err != nil {
+		t.Fatalf("zero rejected: %v", err)
+	}
+	if cfg.E2EEMinSuite != 2 {
+		t.Fatalf("zero normalized to %d, want 2", cfg.E2EEMinSuite)
+	}
+
+	for _, bad := range []int{-1, 3} {
+		cfg := Default()
+		cfg.E2EEMinSuite = bad
+		if err := cfg.normalize(); err == nil {
+			t.Fatalf("suite %d was accepted", bad)
+		}
+	}
+}

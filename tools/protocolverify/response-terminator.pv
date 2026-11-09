@@ -1,0 +1,53 @@
+(*
+   Framing submodel for v2 streaming responses. It starts after the request's
+   hybrid key agreement, so a fresh response key is shared over a private
+   channel. Each head/body/end frame is separately authenticated and bound to
+   its request ID, ordinal, and frame role. The client only emits completion
+   after authenticating the exact terminal marker.
+*)
+set ignoreTypes = false.
+free net: channel.
+free keyDelivery: channel [private].
+type key.
+type requestid.
+type deviceid.
+free req: requestid.
+free device: deviceid.
+free head: bitstring [private].
+free body: bitstring [private].
+free endMarker: bitstring.
+free index0, index1, index2: bitstring.
+free finishResponse, abortResponse: bitstring.
+fun dataAad(deviceid, requestid, bitstring): bitstring.
+fun endAad(deviceid, requestid, bitstring): bitstring.
+fun aead(bitstring, key, bitstring): bitstring.
+reduc forall m: bitstring, k: key, a: bitstring; open(aead(m, k, a), k, a) = m.
+
+event ServerEnd(requestid, bitstring).
+event ClientComplete(requestid, bitstring).
+query attacker(body).
+query r: requestid, b: bitstring; event(ClientComplete(r,b)) ==> event(ServerEnd(r,b)).
+query event(ClientComplete(req,body)).
+
+let Server =
+  new responseKey: key;
+  out(keyDelivery, responseKey);
+  out(net, aead(head, responseKey, dataAad(device, req, index0)));
+  out(net, aead(body, responseKey, dataAad(device, req, index1)));
+  in(net, responseOutcome: bitstring);
+  if responseOutcome = abortResponse then 0
+  else if responseOutcome = finishResponse then
+    event ServerEnd(req, body);
+    out(net, aead(endMarker, responseKey, endAad(device, req, index2))).
+
+let Client =
+  in(keyDelivery, responseKey: key);
+  in(net, frame0: bitstring);
+  if open(frame0, responseKey, dataAad(device, req, index0)) = head then
+    in(net, frame1: bitstring);
+    if open(frame1, responseKey, dataAad(device, req, index1)) = body then
+      in(net, frame2: bitstring);
+      if open(frame2, responseKey, endAad(device, req, index2)) = endMarker then
+        event ClientComplete(req, body).
+
+process (Server | Client)

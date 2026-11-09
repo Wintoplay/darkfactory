@@ -440,8 +440,9 @@ Shipped in this build: `make dist` produces `linux/amd64` and `linux/arm64`
 tarballs and `.deb` packages with `SHA256SUMS`; the `.deb` installs
 the binary, the systemd **user** unit (OP-3), the app-menu entry and the icon;
 `install.sh` installs under `$HOME`, verifies the checksum and can add the unit
-and entry (`--desktop`); `darkfactory launch` is the desktop entry's `Exec` and
-starts the daemon when nothing is listening. `.github/workflows/ci.yml` runs
+and entry (`--desktop`); `darkfactory launch --desktop` is the desktop entry's
+`Exec`, starts the daemon when nothing is listening, and opens the native
+window when `darkfactory-desktop` is installed (else the browser). `.github/workflows/ci.yml` runs
 `make check`, the cross-compile matrix and a second `make dist` to compare the
 bytes; `release.yml` publishes from a tag. Those bytes are identical across
 runs and across umasks: the Makefile pins tar member modes and normalizes the
@@ -546,7 +547,7 @@ moment. Phone and tablet are different products:
 | MO-8 | P2 | M2 | Terminal input disables autocapitalize, autocorrect and spellcheck; clipboard requires a secure context | no auto-capitalised commands |
 | MO-9 | P3 | M3 | Hardware-keyboard shortcuts on iPad/DeX where the browser allows; reserved browser keys are not promised | documented key map |
 | MO-10 | P2 | M2 | No vendor push service; notifications are a local desktop notification and an optional user-configured webhook, off by default | with no webhook configured, the daemon makes no outbound call |
-| MO-11 | P1 | M2 | The Android client is a native APK with bundled UI assets, a Keystore-backed per-device token registry, a loopback-only app origin, no JavaScript auth bridge, no cookies, and navigation restricted to that origin. It pairs from the host code, keeps several hosts, and removes only the current host on `401` or logout, returning to the picker or pairing when none remain. It must still pass the UI-24 phone workflow on a real emulator before daily-driver claims. | `adb install` then pair, switch between two hosts, load the fleet, stream a PTY, send input, open a chat, background/foreground, revoke one device and keep the other; token absent from WebView storage and logs |
+| MO-11 | P1 | M2 | The Android client is a native APK with bundled UI assets, a Keystore-backed per-device token registry, a loopback-only app origin, no JavaScript auth bridge, no cookies, and navigation restricted to that origin. It pairs from the host code and keeps several hosts. A `401`, logout or AEAD failure returns to the picker or pairing when none remain but does not delete the host or its pin; only an explicit Forget removes an entry. A changed host key is refused and kept. It must still pass the UI-24 phone workflow on a real emulator before daily-driver claims. | `adb install` then pair, switch between two hosts, load the fleet, stream a PTY, send input, open a chat, background/foreground, revoke one device and keep the other; token absent from WebView storage and logs |
 
 Implementation note (2026-11-02): MO-10 is implemented with a local daemon
 attention feed, `notify-send` on the desktop, and an Android `dataSync`
@@ -578,9 +579,19 @@ device gets its own scoped credential, never the master token.
 | DP-15 | P1 | M2 | Pairing returns the same 256-bit device credential as a bearer token and a stable `hostId` for native clients. The token is stored server-side only as a hash, accepted in `Authorization: Bearer`, and inherits the same scope, workspace, expiry and revocation as the cookie. The browser keeps using the HttpOnly cookie and ignores the token; no token, raw or hashed, enters a log, URL or query. | pair a native client → `GET /state` with `Bearer <token>` returns the same device, hostId and scope; revoke → next request `401`; a token absent from logs |
 | DP-16 | P2 | M2 | `serve --idle-exit` closes the HTTP listener after no request has been in flight for the window; `launch --idle-exit` passes it to the detached daemon. The session host is not stopped, so PTYs survive and the next start reattaches. | isolated `serve --idle-exit 1s` logs the idle exit and leaves the session host; a live PTY survives the listener exit |
 | DP-17 | P0 | M2 | Remote browser UI is refused by the daemon; the remote trust boundary is a separately distributed native client. The native client pins the daemon P-256 public key and encrypts request/response bodies, credentials, headers, and streams with app-layer ECDH/HKDF/AES-GCM, so a transport that can rewrite the served browser cannot read the client. The first pairing requires the user to compare the host fingerprint on both screens; this is not claimed for the local browser. | remote UI `403`; native client has no daemon-supplied HTML/JS; sealed pairing token; `/api/v1/e2ee` frames for state, PTY and input; replay/tamper refusal; a host-key change refuses; a proxy sees no prompt/terminal bytes or bearer token |
-| DP-18 | P1 | M2 | A native client may keep several hosts in one Keystore-backed registry. Each host has its own endpoint, token, device id, client key, pinned host key, fingerprint, scope, and stable `hostId`; re-pairing replaces that entry. One host is connected at a time; a switch destroys the previous loopback origin and WebView so ids cannot cross hosts. A down host stays in the registry and is shown offline; a changed host key removes only that host; forgetting a host is local and does not revoke it on the desktop. | two hosts with different `hostId`s; switch both ways; stop the active host → picker shows offline while the other connects; replace one host key → only that entry returns to pair; the other host stays; prefs contain one encrypted registry, no host id or token in plaintext |
+| DP-18 | P1 | M2 | A native client may keep several hosts in one Keystore-backed registry. Each host has its own endpoint, token, device id, client key, pinned host key, fingerprint, scope, and stable `hostId`; re-pairing refreshes the token under the same pin, and an identity change requires explicit Forget. One host is connected at a time; a switch destroys the previous loopback origin and WebView so ids cannot cross hosts. A down host stays in the registry and is shown offline; a changed host key refuses connection and preserves that host; forgetting a host is local and does not revoke it on the desktop. | two hosts with different `hostId`s; switch both ways; stop the active host → picker shows offline while the other connects; replace one host key → that entry refuses connection and keeps its pin; the other host stays; prefs contain one encrypted registry, no host id or token in plaintext |
 | DP-19 | P0 | M2 | Android calculates the pairing fingerprint from the received host public-key DER and rejects a mismatch. The user compares that calculated value with the desktop. | A substituted key with the original fingerprint is rejected before confirmation. |
 | DP-20 | P0 | M2 | The daemon records each authenticated encrypted request ID durably before dispatch and retains it through the timestamp acceptance window. Storage failure prevents dispatch. | A replay after restart or after five minutes with a future timestamp is refused; expired records are removed. |
+| DP-21 | P0 | M2 | The native envelope supports a hybrid suite, `x25519-mlkem768-v1`: a fresh X25519 ephemeral and an ML-KEM-768 ciphertext per request, with both shared secrets required by one HKDF input. The suite is selected at pairing and stored per device. | A v2 pair and `/state` succeed; removing either shared secret changes the keys; `make android-pq-check` and `make android-pq-live` agree with the daemon |
+| DP-22 | P0 | M2 | A device's suite is sticky. A v2 row refuses a v1 envelope; an authentication failure never falls back to another suite; a host response without the pinned suite is refused. | v1 envelope on a v2 row → `e2ee_suite_downgrade`; a tampered envelope → refusal, no retry at v1 |
+| DP-23 | P1 | M2 | The host publishes a signed key bundle (P-256, X25519, ML-KEM-768, epoch). The phone verifies it under the P-256 key it carries and pins `fingerprintV2` over the identity and suite; a bundle rotation under the same identity and suite keeps the pin. | substituted bundle field → signature failure; same P-256 with new X25519/ML-KEM → accepted and re-saved; `TestE2EEV2BundleSignature`, `make android-pq-check` |
+| DP-24 | P0 | M2 | Pairing enforces the host-configured minimum suite. With `--e2ee-min-suite=2` the unsealed legacy token and a legacy client key are refused with `e2ee_suite_downgrade`; a host advertising v2 without a valid bundle is refused by the client, not paired as v1. | v1 pair under min suite 2 → 403; stripped bundle → client refusal; `TestE2EEV2PairRequiresBundle`, `make android-pq-live` |
+| DP-25 | P1 | M2 | A re-pair at a lower suite or a different `fingerprintV2` is an identity change. The phone refuses it and keeps the stored pin; only an explicit Forget removes the host. | changed bundle/pin → host shown with an error, row still present; `401`/AEAD failure does not delete a host |
+| DP-26 | P0 | M2 | The accepted suite is authenticated inside the sealed pair payload and inside the envelope AAD/HKDF transcript; a rewritten version or suite cannot produce a key that opens the frames. | an outer suite hint cannot change the accepted sealed suite; a changed wire version or suite is refused before dispatch; `TestE2EEV2VersionFlipFailsClosed` |
+| DP-27 | P0 | M2 | The phone confirms the calculated host fingerprint before transmitting a pairing code. A v2 pairing sends only an authenticated encrypted code bound to the confirmed host bundle and client ephemeral material. New Android pairings require a valid hybrid bundle regardless of advertised metadata. The default host minimum suite is 2; existing legacy connections require an explicit value of 1. | substituted ephemeral material cannot open `sealedCode`; a raw-code v2 request is refused; cancel before confirmation sends no pairing request |
+| DP-28 | P0 | M2 | A v2 encrypted response authenticates completion with an end marker bound to the request and frame index. A missing, modified, reordered, or replayed marker is refused. Android bounds encrypted frame lengths before allocation and bounds accumulated notification bodies. | complete response succeeds; every truncated response prefix and a missing end marker fail; oversized frames fail before allocation |
+| DP-29 | P1 | M2 | Pull-request security checks execute production client interoperability, disposable pairing, protocol fuzzing, Android compile/lint, and advisory scans for both Go modules and the pinned Java and JavaScript dependencies. | `make security-check`; security and vulnerability workflows; a scan failure fails its job |
+
 
 Implemented in this build: a host-initiated 40-bit code with a 120 s TTL,
 single use, hashed in memory, never logged, and carried in the browser URL
@@ -638,9 +649,39 @@ confirmed two envelope defects — an encoded path that re-entered the handler
 and an unbounded replay sweep per request — both fixed here, with tests, plus
 hardening gaps recorded in its resolution table. DP-19's acceptance is met by
 the computed-fingerprint check. DP-20's durability and its bounded sweep are
-implemented; remaining accepted limits are the unthrottled envelope route and
-the deferred wire-format changes (authenticated terminator, frame ceiling,
-clock offset). No external security review has been performed.
+implemented. The envelope route is rate-limited. The hardened v2 format requires
+an authenticated response terminator, and Android bounds incoming frames. Clock
+offset handling remains open. No external security review has been performed.
+
+Daemon-side hybrid envelope and Android v2 client (2026-11-09): `/api/v1/e2ee`
+accepts a second suite, `x25519-mlkem768-v1`, selected by host policy
+(`--e2ee-min-suite`, default 2; legacy requires an explicit value of 1) and stored per device row. The host identity now
+carries a static X25519 and an ML-KEM-768 half in the same `e2ee` bucket,
+published in a bundle signed by the P-256 identity; a legacy PKCS#8 row is
+upgraded in place without changing the pin. A v2 request carries a fresh X25519
+ephemeral key and an ML-KEM-768 ciphertext, and both shared secrets feed one
+HKDF-SHA256 input. A v2 row refuses v1 envelopes, and `min-suite=2` also refuses
+legacy rows and the unsealed pairing response with `e2ee_suite_downgrade`.
+Covered by `TestE2EEV2PairAndState`, `TestE2EEV2RejectsV1Envelope`,
+`TestE2EEV2VersionFlipFailsClosed`, `TestE2EEV2PairRequiresBundle`,
+`TestE2EEV2MinSuiteRefusesLegacyRow`, `TestE2EEV2ReplayAndTamper`,
+`TestE2EEV2BundleSignature` and `TestE2EEIdentityUpgradesLegacyKey`.
+
+The Android client implements v2 as well (DP-21..DP-26). Its X25519 and ML-KEM operations use the pinned Bouncy Castle lightweight
+APIs through Java adapters under
+`android/app/src/main/java/dev/darkfactory/mobile/crypto/`. Application code
+only encapsulates; it does not call the provider's ML-KEM decapsulation APIs. The bundle,
+transcript and envelope code is Java too and is executed on a JVM twice:
+`make android-pq-check` compares every derived value with Go and has Go
+decapsulate the Java ciphertext; `make android-pq-live` pairs with and reads
+`/api/v1/state` from a disposable `--e2ee-min-suite=2` daemon, and observes the
+downgrade and replay refusals. The phone refuses a v2 advertisement with a
+missing or invalid bundle instead of pairing as v1, and re-verifies the stored
+bundle on every load. A changed dynamic half under the same P-256 key and suite
+is re-saved; a changed pin is refused and the row is kept (D5/H-3), so only an
+explicit Forget removes a host. These are JVM, synthetic-daemon and one
+emulator (`dfphone`) results, not a physical-phone run. Forward secrecy against host-key theft is unchanged,
+and the identity is still plaintext in `state.db`.
 
 **Honest limit.** A same-uid agent can read `~/.config/darkfactory/token`, run
 the CLI and pair a device. Pairing protects against the network, a lost phone

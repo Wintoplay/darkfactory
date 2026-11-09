@@ -46,11 +46,14 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
 - `make run` → `go run ./cmd/darkfactory serve`.
 - `sh test/android/check-fingerprint.sh` compiles `HostFingerprint` and its JVM
   test with `javac`/`java`; it pins DP-19 (the displayed fingerprint hashes the
-  received host key) without an emulator. The Android client builds with
-  `android/gradlew -p android assembleDebug` (or `assembleRelease` for a signed
-  APK) with JDK 21 and Build-Tools 35.0.0. Release signing reads
-  `android/keystore.properties`, which is gitignored; the keystore itself stays
-  outside the repository.
+  received host key) without an emulator. `make android-pq-check` extends the
+  same idea to the v2 crypto and protocol (`tools/pqcheck` supplies Go vectors,
+  Go decapsulates the Java ML-KEM ciphertext); `make android-pq-live` runs the
+  same classes against a disposable `--e2ee-min-suite=2` daemon. The Android
+  client builds with `android/gradlew -p android assembleDebug` (or
+  `assembleRelease` for a signed APK) with JDK 21 and Build-Tools 35.0.0.
+  Release signing reads `android/keystore.properties`, which is gitignored; the
+  keystore itself stays outside the repository.
 - The ordered release gates and their commands are in
   [release-checklist.md](release-checklist.md); `HANDOFF.md` owns current scope
   and process state.
@@ -78,10 +81,11 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
 - `internal/gitwt` — shells out to `git -C <repo> worktree ...`; no git library.
 - `internal/store` — bbolt, JSON values, buckets `repos` `worktrees` `sessions`
   `transcripts` `browsers` `deviceKeys` `runs` `plans` `steps` `ledger` `e2ee`
-  `e2eeReplay`. No schema-version gate. The `e2ee` bucket holds only the
-  daemon's P-256 host private key; `e2eeReplay` holds hashed `(deviceID, id)`
-  request records with an expiry millisecond stamp; `browsers` rows may carry a
-  client SPKI public key.
+  `e2eeReplay`. No schema-version gate. The `e2ee` bucket holds the daemon
+  identity file: P-256 PKCS#8, X25519 scalar, ML-KEM-768 seed and epoch (a
+  legacy bare PKCS#8 row is upgraded in place); `e2eeReplay` holds hashed
+  `(deviceID, id)` request records with an expiry millisecond stamp; `browsers`
+  rows may carry a client SPKI public key or a negotiated envelope suite.
 - `internal/config` — XDG paths, `config.json`, token creation; first run
   creates the directories, config and token. `policy.json` beside it is
   optional: absent means the built-in default.
@@ -229,22 +233,39 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   header. Legacy native tokens are refused by the Android client; the local
   browser is unaffected.
 - **Native E2EE envelope:** `GET /api/v1/e2ee/host-key` is public metadata
-  `{v, hostId, publicKey, fingerprint}` for the P-256 host identity stored in
-  the `e2ee` bucket. `POST /api/v1/e2ee` is the native transport. Its JSON body
-  is `{v, deviceId, id, ts, nonce, ciphertext}`; `ciphertext` is AES-GCM over
-  `{method, path, headers, body, token}` with AAD
-  `req|deviceId|id|ts`. The daemon looks up the paired row by device ID, derives
-  the directional keys from the stored client public key and the host private
-  key (HKDF-SHA256, salt `SHA-256(hostSPKI|clientSPKI)`), verifies the envelope
-  token hash, rejects a timestamp outside ±5 min, records the request ID in
-  `e2eeReplay` before dispatch, and retains it until `ts + 5 min` (DP-20), then
-  dispatches the inner request through `Server.Handler()` with the bearer
-  header. A storage failure refuses the request; a reused ID is refused after a
-  daemon restart as well as in-process; expired records are pruned on the next
-  consume. Requests accepted before this record existed cannot be rejected
-  retroactively. Inner mutations still go through `Server.mutate`; the envelope
-  route is only an authenticated bootstrap exemption because the credential is
-  inside the ciphertext.
+  `{v, maxVersion, suite, hostId, publicKey, fingerprint, fingerprintV2, bundle}`.
+  The P-256 identity, a static X25519 key and an ML-KEM-768 key live in the
+  `e2ee` bucket; `bundle` is those public halves plus an epoch, signed by the
+  P-256 key. `POST /api/v1/e2ee` is the native transport. Its v1 JSON body is
+  `{v, deviceId, id, ts, nonce, ciphertext}`; `ciphertext` is AES-GCM over
+  `{method, path, headers, body, token}` with AAD `req|deviceId|id|ts`. The
+  daemon looks up the paired row by device ID, derives the directional keys from
+  the stored client public key and the host private key (HKDF-SHA256, salt
+  `SHA-256(hostSPKI|clientSPKI)`), verifies the envelope token hash, rejects a
+  timestamp outside ±5 min, records the request ID in `e2eeReplay` before
+  dispatch, and retains it until `ts + 5 min` (DP-20), then dispatches the inner
+  request through `Server.Handler()` with the bearer header. A storage failure
+  refuses the request; a reused ID is refused after a daemon restart as well as
+  in-process; expired records are pruned on the next consume. Requests accepted
+  before this record existed cannot be rejected retroactively. Inner mutations
+  still go through `Server.mutate`; the envelope route is only an authenticated
+  bootstrap exemption because the credential is inside the ciphertext.
+  The v2 suite `x25519-mlkem768-v1` adds `epk` (32-byte X25519 ephemeral public
+  key) and `kem` (1088-byte ML-KEM-768 ciphertext) to the body and to the pair
+  request (`{v:2, suite, epk, kem, sealedCode}`). The phone confirms the
+  fingerprint before posting and encrypts the one-time code using a separate
+  `darkfactory-e2ee-pair-init-v2` transcript, so the outer transport cannot
+  transplant a visible code into its own key exchange. Keys are HKDF-SHA256 over
+  `X25519(host, epk) || ML-KEM-Decapsulate(kem)` with the transcript as salt and
+  `darkfactory-e2ee-v2` as info; both secrets are required. A v2 row has no
+  stored client key and refuses a v1 envelope; under `--e2ee-min-suite=2` a
+  legacy row and the unsealed pairing response are refused with
+  `e2ee_suite_downgrade`. The minimum defaults to 2; setting 1 explicitly opts
+  into legacy compatibility. Invalid pairing material is rejected before a
+  grant is consumed or a device is created. The pair response puts the token, device id and
+  accepted suite inside `sealedPayload`, and the phone pins `fingerprintV2`
+  (identity plus suite). See
+  `docs/reviews/e2ee-pq-hybrid-review-2026-11-09.md`.
 - **Encrypted responses:** the outer response is always `200`,
   `application/x-df-e2ee`, chunked. Frame 0 is an encrypted
   `{status, headers}` head; later frames are body chunks with AAD
@@ -252,7 +273,10 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   `Transfer-Encoding` and `Connection` are stripped. Frames are flushed as the
   inner handler flushes, so PTY and OpenCode streams keep working. The Android
   proxy writes the decrypted bytes to the local WebView and never exposes the
-  token or envelope route to the page.
+  token or envelope route to the page. Completed v2 streams require an
+  encrypted `DFE2EE-END-v2` frame under the distinct end-marker AAD; EOF before
+  that marker is truncation, not successful completion. Legacy framing remains
+  available only with the explicit compatibility policy.
   The envelope budget is `1200/min` per source and `3600/min` globally: a
   keystroke is one envelope, so the earlier 300/min budget throttled ordinary
   typing. A 429 is passed through as `e2ee_rate_limited` (not `e2ee_failed`);
@@ -260,12 +284,32 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   retries with a short backoff instead of dropping it.
 - **Host pin:** the Android client pins `hostPublicKey` and computes the
   SHA-256 fingerprint from that key's SPKI DER, refusing a pairing response
-  whose `fingerprint` does not match it (DP-19). The desktop **Pair phone**
-  dialog shows the same fingerprint from the local host-key route. The user must
-  compare them. A changed key fails `verifyHost` before the WebView loads and
-  clears the saved device; a change during a live request fails AEAD
-  authentication and also returns to pair. The first pairing remains
-  trust-on-first-use if the user does not compare; do not claim otherwise.
+  whose `fingerprint` does not match it (DP-19). For v2 it verifies the signed
+  bundle under that same P-256 key, computes `fingerprintV2` from the identity
+  and suite, and compares it with the value shown on the desktop; it also
+  refuses a host that advertises `maxVersion >= 2` without a valid bundle
+  rather than pairing as v1. New Android pairing always requires the hybrid
+  bundle, including when every v2 advertisement is missing. Existing stored v1
+  rows remain a host-policy compatibility exception. The desktop **Pair phone** dialog shows the
+  matching fingerprint and suite. The user must compare them. A changed key or
+  bundle fails `verifyHost` before the WebView loads, but the stored row and
+  its pin are **kept**: only an explicit Forget removes a host, so a network
+  peer cannot force a re-pair and a downgrade. A change during a live request
+  fails AEAD authentication and returns to the host list for the same reason.
+  A bundle rotation under an unchanged P-256 key and suite is accepted and
+  re-saved. The first pairing remains trust-on-first-use if the user does not
+  compare; do not claim otherwise.
+- **Android v2 implementation:** X25519 and ML-KEM use pinned Bouncy Castle
+  lightweight APIs through Java adapters in `crypto/`. The JVM download and
+  Gradle build verify the provider artifact checksum. The application's wire
+  code (`HostKey`, `V2Protocol`, `Envelope`) remains plain Java so JVM checks
+  run the production code. Kotlin owns JSON, HTTP and UI. `make android-pq-check`
+  checks interoperability and malformed inputs; `make android-pq-live` pairs
+  with a disposable daemon and checks downgrade, replay and encrypted frames.
+  The security workflow runs these on pull requests, compiles/lints Android,
+  and fuzzes the protocol and terminal parsers. Neither a JVM run nor a
+  symbolic protocol model substitutes for physical-phone acceptance or an
+  external implementation review.
 - Pairing creates a device record with its own hashed cookie row, never a shared
   cookie. Device-key rows use the same device list but a separate bucket.
   `GET /api/v1/devices` lists both (`kind: "key"` for a public-key device);
