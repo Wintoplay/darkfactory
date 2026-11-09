@@ -127,7 +127,7 @@ make ui-gate      # real browser at desktop, narrow and phone widths
 make security-check  # Android PQ interop, fuzz, symbolic protocol models
 make fuzz         # explore past the committed corpus
 make vuln         # reachable Go advisories (dev-only, needs network)
-make android-build   # APK with JDK 21 and Build-Tools 35.0.0
+make android-build   # APK with JDK 21 and Build-Tools 36.0.0
 ```
 
 Requirements: Go 1.27.3+, git, Linux. The daemon is CGO-free and has no Node
@@ -150,6 +150,8 @@ docs/                requirements, design notes, reviews
   containment, terminal behaviour, OpenCode panel, UI debugging.
 - [Requirements](docs/requirements.md) — the specification and traceability.
 - [Agent reference](docs/agent-reference.md) — commands, layout, invariants.
+- [Dependency policy](docs/dependency-policy.md) — Dependabot scope, gates, and
+  the Android toolchain refresh procedure.
 - [Release checklist](docs/release-checklist.md) — gates, evidence, open items.
 - [UI gate](docs/ui-gate.md) — build identity and the desktop/phone contract.
 - [Native client](docs/native-client.md),

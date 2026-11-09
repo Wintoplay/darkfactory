@@ -133,8 +133,8 @@ release. Do not claim an installer or another platform from these checks.
 
 - [ ] Bump `android/version.properties` (`versionCode`) above every published
       APK. Android refuses a downgrade and the value is not derived from git.
-- [x] `android/gradlew -p android assembleDebug` with JDK 21 and
-      Build-Tools 35.0.0.
+- [x] `android/gradlew -p android assembleDebug` with JDK 21, SDK platform
+      36 and Build-Tools 36.0.0.
 - [x] `android/gradlew -p android lintDebug`; no notification/foreground-service
       errors.
 - [x] Record the APK SHA-256 and the APK's UI asset identity.

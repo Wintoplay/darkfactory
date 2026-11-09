@@ -121,9 +121,9 @@ changing an existing host pin or lowering its suite.
 Prerequisites:
 
 - JDK 21 with `javac`.
-- Android SDK platform 34.
-- Android SDK Build-Tools 35.0.0 (AGP 8.12 refuses 34.0.0).
-- The checked-in Gradle 9.0.0 wrapper.
+- Android SDK platform 36.
+- Android SDK Build-Tools 36.0.0 (AGP 9.5 requires 36.0.0).
+- The checked-in Gradle 9.9.0 wrapper.
 
 ```sh
 export JAVA_HOME="$HOME/.local/opt/jdk-21.0.13+9"   # or your JDK 21

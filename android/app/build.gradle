@@ -1,5 +1,11 @@
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+
 apply plugin: 'com.android.application'
-apply plugin: 'org.jetbrains.kotlin.android'
+// AGP 9 compiles Kotlin itself (built-in Kotlin). Applying kotlin-android
+// alongside it fails with "Cannot add extension with name 'kotlin'".
 
 // Release signing is optional and never committed. Put the keystore path and
 // passwords in android/keystore.properties (gitignored), or leave it absent to
@@ -21,15 +27,36 @@ def versionPropertiesFile = rootProject.file('version.properties')
 if (versionPropertiesFile.exists()) {
     versionPropertiesFile.withInputStream { versionProperties.load(it) }
 }
+// Gradle 9.9 deprecates starting a process at configuration time and points at
+// ValueSource for values the configuration genuinely needs.
+abstract class GitDescribe implements ValueSource<String, GitDescribe.Parameters> {
+    interface Parameters extends ValueSourceParameters {
+        ListProperty<String> getArgs()
+        DirectoryProperty getDirectory()
+    }
+
+    @Override
+    String obtain() {
+        try {
+            def process = new ProcessBuilder(['git'] + parameters.args.get())
+                .directory(parameters.getDirectory().get().asFile)
+                .redirectErrorStream(true)
+                .start()
+            def text = process.inputStream.text.trim()
+            process.waitFor()
+            return text
+        } catch (Exception ignored) {
+            return ''
+        }
+    }
+}
+
 def gitValue = { String... args ->
     try {
-        def process = new ProcessBuilder(['git'] + args.toList())
-            .directory(rootProject.projectDir)
-            .redirectErrorStream(true)
-            .start()
-        def text = process.inputStream.text.trim()
-        process.waitFor()
-        text
+        providers.of(GitDescribe) {
+            parameters.args.set(args.toList())
+            parameters.directory.set(rootProject.layout.projectDirectory)
+        }.get().trim()
     } catch (Exception ignored) {
         ''
     }
@@ -39,18 +66,18 @@ def defaultVersionName = described ? described.replaceFirst('^v', '') : '0.1.0-d
 def defaultVersionCode = versionProperties.getProperty('versionCode', '1')
 
 android {
-    namespace 'dev.darkfactory.mobile'
-    compileSdk 34
+    namespace = 'dev.darkfactory.mobile'
+    compileSdk = 36
 
     defaultConfig {
-        applicationId 'dev.darkfactory.mobile'
-        minSdk 26
-        targetSdk 34
-        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+        applicationId = 'dev.darkfactory.mobile'
+        minSdk = 26
+        targetSdk = 36
+        testInstrumentationRunner = 'android.test.InstrumentationTestRunner'
         def resolvedCode = (findProperty('dfVersionCode') ?: defaultVersionCode).toString().toInteger()
         def resolvedName = findProperty('dfVersionName') ?: defaultVersionName
-        versionCode resolvedCode
-        versionName resolvedName
+        versionCode = resolvedCode
+        versionName = resolvedName
     }
 
     signingConfigs {
@@ -67,9 +94,9 @@ android {
     buildTypes {
         release {
             if (keystorePropertiesFile.exists()) {
-                signingConfig signingConfigs.release
+                signingConfig = signingConfigs.release
             }
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -80,26 +107,23 @@ android {
     }
 
     lint {
-        abortOnError true
-        checkReleaseBuilds false
+        abortOnError = true
+        checkReleaseBuilds = false
     }
 }
 
-// Kotlin 2.4 rejects the removed android.kotlinOptions DSL; the Java compile
-// options above still set the bytecode target for javac.
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
-}
-
+// Built-in Kotlin sets the Kotlin jvmTarget from targetCompatibility, so the
+// Java options above are the single bytecode target.
 dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
-    androidTestCompileOnly files(
-        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.base.jar",
-        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.runner.jar",
-        "${android.sdkDirectory}/platforms/android-${android.compileSdk}/optional/android.test.mock.jar"
-    )
+    // AGP 9 removed the android.sdkDirectory property; ask the SDK components
+    // provider instead. The platform test jars are still shipped in SDK 36.
+    def testJars = androidComponents.sdkComponents.sdkDirectory.map { sdkDir ->
+        ['base', 'runner', 'mock'].collect { name ->
+            sdkDir.file("platforms/android-${android.compileSdk}/optional/android.test.${name}.jar")
+        }
+    }
+    androidTestCompileOnly files(testJars)
 }
 
 // The daemon and the Android client render the same UI. Copy it at build time

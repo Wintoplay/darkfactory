@@ -55,7 +55,7 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   Go decapsulates the Java ML-KEM ciphertext); `make android-pq-live` runs the
   same classes against a disposable `--e2ee-min-suite=2` daemon. The Android
   client builds with `android/gradlew -p android assembleDebug` (or
-  `assembleRelease` for a signed APK) with JDK 21 and Build-Tools 35.0.0.
+  `assembleRelease` for a signed APK) with JDK 21 and Build-Tools 36.0.0.
   Release signing reads `android/keystore.properties`, which is gitignored; the
   keystore itself stays outside the repository.
 - The ordered release gates and their commands are in
@@ -63,6 +63,10 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   and process state.
 - Dependencies are vendored and tracked: after a `go.mod` change run
   `go mod tidy && go mod vendor`, or Go reports inconsistent vendoring.
+  Dependabot opens grouped updates for the two Go modules, the Android Gradle
+  project and Actions; alerts and security updates are on. The gates and the
+  manual items it cannot see (wrapper, AGP, SDK, JDK) are in
+  [dependency-policy.md](dependency-policy.md).
 - Go 1.27+ (`go.mod` `1.27.3`, the smallest release with every stdlib
   advisory fixed). Never downgrade the `go` directive.
 
@@ -104,7 +108,7 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   the Android asset source, not a remote client.
 - `android/` — Kotlin native Android shell: pair screen, Keystore token,
   build-time copy of `web/`, loopback origin plus API proxy, WebView navigation
-  lockdown. It has its own Gradle project, needs JDK 21 and Build-Tools 35.0.0,
+  lockdown. It has its own Gradle project, needs JDK 21 and Build-Tools 36.0.0,
   and is not a root Go dependency. A release-signed APK is attached to the
   `v0.1.0-rc.1` prerelease and is emulator-verified with two saved hosts, one
   connected at a time; real-phone acceptance remains open. See

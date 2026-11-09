@@ -1,6 +1,7 @@
 package dev.darkfactory.mobile
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -27,6 +28,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 
 /**
  * A native Android shell for the DarkFactory UI. The UI bytes come from the
@@ -48,12 +51,23 @@ class MainActivity : Activity() {
     private var originHost = ""
     private var currentHostId = ""
     private var connectGeneration = 0
+    private var backCallback: OnBackInvokedCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tokenStore = TokenStore(this)
         root = FrameLayout(this).apply { setBackgroundColor(BACKGROUND) }
         setContentView(root)
+        // targetSdk 35+ sends back gestures to the predictive back dispatcher,
+        // not to onBackPressed. Register the same handler for API 33+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = OnBackInvokedCallback { handleBack() }
+            backCallback = callback
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                callback
+            )
+        }
 
         if (!handlePairIntent(intent, initial = true)) {
             openInitial()
@@ -136,6 +150,10 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+            backCallback = null
+        }
         stopWeb()
         super.onDestroy()
     }
@@ -170,8 +188,16 @@ class MainActivity : Activity() {
         webView?.onResume()
     }
 
-    @Suppress("DEPRECATION")
+    // API < 33. From 33 the callback registered in onCreate runs instead; lint
+    // cannot see that, so this override is intentionally still here.
+    @SuppressLint("GestureBackNavigation")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
+        handleBack()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun handleBack() {
         val web = webView
         if (web != null) {
             if (web.canGoBack()) {
@@ -458,6 +484,9 @@ class MainActivity : Activity() {
         )
     }
 
+    // These hardening flags are already false by default for a modern targetSdk,
+    // but WebView defaults have changed across releases; keep them explicit.
+    @Suppress("DEPRECATION")
     private fun startWebNow(connection: TokenStore.Connection) {
         val e2ee = try {
             E2EE.from(connection)

@@ -236,7 +236,7 @@ desktop-check:
 	cd desktop && go test ./internal/...
 
 # Optional native Android client. It is not part of `make check`: it needs a
-# JDK with javac, Android SDK Build-Tools 35.0.0, and a connected device or
+# JDK with javac, Android SDK Build-Tools 36.0.0, and a connected device or
 # emulator. The APK copies web/ at build time; it is not a second UI copy.
 ANDROID_HOME ?= $(HOME)/Android/Sdk
 ANDROID_ADB ?= $(ANDROID_HOME)/platform-tools/adb

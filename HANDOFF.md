@@ -1,5 +1,38 @@
 # Current release handoff
 
+## Dependency refresh and Dependabot (2026-11-09)
+
+Dependabot now watches both Go modules, the Android Gradle project and GitHub
+Actions. Alerts and automated security updates are enabled in the repository
+settings; grouped minor/patch PRs keep the queue small. AGP and Kotlin majors are
+ignored because they are toolchain migrations, not version edits. The gates and
+the items Dependabot cannot see (Gradle wrapper, AGP minimum Build-Tools, SDK
+platform, JDK) are in `docs/dependency-policy.md`.
+
+Go and Wails moved to current releases: `bbolt` 1.3.11 → 1.5.0, `x/sys`
+0.47/0.48 → 0.49.0, Wails 3.0.0 → 3.1.0. `make check` passes. A copy of the
+414 MB live `state.db` was opened by the new daemon under isolated XDG roots; it
+restored all four running session rows, so bbolt 1.5 reads the 1.3.11 database.
+The live daemon and desktop shell were not restarted and still run the previous
+build.
+
+Android moved to AGP 9.5.1, Gradle 9.9.0, Kotlin 2.4.21 through AGP's built-in
+Kotlin (the `kotlin-android` plugin is gone), `compileSdk`/`targetSdk` 36 and
+Build-Tools 36.0.0; SDK platform 36 is installed in `~/Android/Sdk`. Gradle 9.9
+deprecations were fixed rather than hidden: the tag lookup is a `ValueSource`,
+and the DSL uses assignment syntax. `targetSdk 36` routes back gestures to the
+predictive-back dispatcher, so `MainActivity` now registers an
+`OnBackInvokedCallback` for API 33+ and keeps `onBackPressed` for older
+releases; lint's `GestureBackNavigation` error is gone.
+
+Verified locally: `lintDebug assembleDebug assembleDebugAndroidTest`,
+`assembleRelease` (signed, certificate unchanged, `versionCode 161`),
+`make android-pq-check` and `make android-pq-live`. The release APK asset on
+`v0.1.0-rc.8` was not replaced. `make protocol-verify` could not run on this
+host because `ocamlyacc` is absent; CI runs it. No emulator or physical-phone
+run covers `targetSdk 36` yet, so predictive back and edge-to-edge remain open
+for Android acceptance.
+
 ## Hybrid native transport hardening (2026-11-09)
 
 The working tree closes the findings from the hybrid E2EE review. It is

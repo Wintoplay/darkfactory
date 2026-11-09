@@ -97,7 +97,7 @@ Keystore, the notification service, or a real radio path.
 
 ## Native app smoke test
 
-Build with JDK 21 and Build-Tools 35.0.0:
+Build with JDK 21, SDK platform 36 and Build-Tools 36.0.0:
 
 ```sh
 export JAVA_HOME="$HOME/.local/opt/jdk-21.0.13+9"

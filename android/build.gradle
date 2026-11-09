@@ -4,7 +4,10 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.12.0'
+        classpath 'com.android.tools.build:gradle:9.5.1'
+        // AGP 9 has built-in Kotlin and defaults to KGP 2.2.x. Declaring the
+        // current Kotlin release here upgrades the bundled plugin; the
+        // kotlin-android plugin itself must not be applied any more.
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21'
     }
 }
