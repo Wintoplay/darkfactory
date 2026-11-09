@@ -4,6 +4,6 @@ go 1.27.3
 
 require (
 	github.com/creack/pty v1.1.24
-	go.etcd.io/bbolt v1.3.11
-	golang.org/x/sys v0.47.0
+	go.etcd.io/bbolt v1.5.0
+	golang.org/x/sys v0.49.0
 )
