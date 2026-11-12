@@ -493,6 +493,13 @@ This document states what those clients must preserve.
   not rewrite a framework when the engine is the differential — see
   [the terminal lag post-mortem](reviews/terminal-lag-2026-11-02.md).
 
+- Raising Android `targetSdk` can change layout behavior without changing UI
+  code. Target 35+ enforces edge-to-edge on Android 15+. Reserve system-bar,
+  cutout and keyboard space in the native root, then zero the handled insets
+  before forwarding them to WebView. Check the target API on an emulator,
+  including navigation modes, rotation and keyboard dismissal. A build or an
+  older emulator does not establish that the new window behavior works.
+
 ## Related
 
 - [Requirements](requirements.md) — SS-3/SS-4/SS-6/SS-7, DP-1/DP-6/DP-8/DP-9/DP-13/DP-17/DP-19/DP-20, UI-14/UI-16/UI-17/UI-18.

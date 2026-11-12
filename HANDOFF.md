@@ -1,5 +1,59 @@
 # Current release handoff
 
+## v0.1.0-rc.10 candidate (2026-11-12)
+
+Release scope is the Android system-bar fix below, APK versionCode 163, and
+the Go 1.27.4 security baseline in both modules. GO-2026-6859 is reported by
+both module scans with Go 1.27.3 and is fixed by 1.27.4. Library dependencies,
+Gradle and Android SDK targets are unchanged. The dependency audit in
+`docs/reviews/dependency-audit-2026-11-12.md` records the other available updates.
+
+The tag-driven `release` workflow publishes Linux packages. Android signing
+secrets are absent from GitHub, so the APK must be built with the existing
+local release certificate and attached to the same prerelease. This release
+does not install or restart the operator stack. Samsung A55 acceptance remains
+open; API 36 emulator evidence is recorded below.
+
+Pre-tag checks passed with Go 1.27.4: `make check`, both module
+`govulncheck ./...` scans, `android-pq-check` and `android-pq-live`. The module
+metadata was tidied and root vendoring regenerated without library-version
+changes. Release logs and publication results are kept in
+`test/artifacts/release-2026-11-12/` (ignored).
+
+## Android system-bar overlap fix (2026-11-12, working tree)
+
+The `targetSdk 36` upgrade exposed the missing edge-to-edge inset handling.
+On an API 36 emulator, the rc.9 activity placed its host bar behind the status
+icons and Fleet navigation behind the gesture bar, matching the Samsung A55
+report. `MainActivity` now reserves system-bar, cutout and keyboard space in
+the shared native root on API 30+, then forwards zeroed insets to WebView to
+avoid duplicate spacing. API 26–29 retains platform fitting and `adjustResize`.
+Dependencies and `targetSdk 36` are unchanged.
+
+`lintDebug`, debug/test APK builds, signed `assembleRelease`, and all six
+instrumentation tests passed on a disposable API 36 emulator. Both new inset
+tests fail against the old APK and pass against the fix. Visual checks of the
+paired Fleet cover gesture and three-button navigation, landscape and a real
+keyboard opening/dismissing. Cutout and repeated-inset cases use injected
+insets. The security workflow now runs its existing emulator job on API 36.
+Evidence is in `test/artifacts/android-insets-2026-11-12/` (ignored).
+
+Signed APK: `dist/darkfactory_0.1.0-rc.9-insets.1_android.apk`, versionCode 163,
+versionName `0.1.0-rc.9-insets.1`, existing signing certificate `a671f0ba…`,
+SHA-256 `de43ea5645365a39bfe254f21bffdb9f29392ae54c2839665ee59384079ac2c1`.
+The phone was not attached, so Samsung A55 acceptance remains open. No release
+was published and no operator service, desktop shell or session host was
+installed or restarted.
+The signed APK was also installed, paired and checked at connected Fleet on
+the disposable emulator. All isolated test processes were stopped afterward.
+
+The paired visual check used a fresh `make build VERSION=0.1.0-rc.9-insets.1`
+daemon and session host under `/tmp/df-android-insets`, port 18789; status
+reported `0.1.0-rc.9-insets.1 (v0.1.0-rc.9-dirty)`, binary mtime
+`2026-11-12 16:12:29 +0700`, UI `2026-11-09.01`. Both `/proc` executable links
+resolved to this checkout's `bin/darkfactory`. These are isolated test
+generations, not an update to the operator's running stack.
+
 ## v0.1.0-rc.9 (2026-11-09)
 
 Tag `v0.1.0-rc.9`. The wire protocol is unchanged from rc.8: a daemon and a

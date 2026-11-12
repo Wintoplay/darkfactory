@@ -130,7 +130,7 @@ make vuln         # reachable Go advisories (dev-only, needs network)
 make android-build   # APK with JDK 21 and Build-Tools 36.0.0
 ```
 
-Requirements: Go 1.27.3+, git, Linux. The daemon is CGO-free and has no Node
+Requirements: Go 1.27.4+, git, Linux. The daemon is CGO-free and has no Node
 runtime; `web/` is vendored and embedded. The optional Wails shell has its own
 module under `desktop/`. Commands and gates:
 [development](docs/agent-reference.md), [release checklist](docs/release-checklist.md).

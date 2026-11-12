@@ -545,7 +545,7 @@ moment. Phone and tablet are different products:
 | MO-3 | P1 | M2 | Tablet/DeX gets a full terminal with an accessory key bar (Esc, Tab, Ctrl, arrows, PgUp/PgDn, `\|`, `~`, `/`) and paste | a TUI can be driven without a hardware keyboard |
 | MO-4 | P1 | M2 | `visualViewport` follows the soft keyboard; the PTY resizes to the visible area; the shell is pinned to the visual viewport's height and offset, not the layout viewport | keyboard open/close does not hide the terminal cursor or prompt |
 | MO-5 | P1 | M2 | Reconnect on `visibilitychange` and network loss using `snapshot + seq`; a pane is never blanked | background for 10 minutes, return, output is contiguous |
-| MO-6 | P2 | M2 | Safe-area insets; `ResizeObserver` for Split View, Stage Manager and DeX; font-size control | 390 px and 1366 px both usable |
+| MO-6 | P2 | M2 | Safe-area insets; Android native screens and bundled UI avoid system bars and display cutouts under enforced edge-to-edge layout; `ResizeObserver` for Split View, Stage Manager and DeX; font-size control | 390 px and 1366 px both usable; Android portrait and landscape with gesture and three-button navigation keep controls clear of system bars and cutouts |
 | MO-7 | P2 | M3 | Web Push for `blocked` / `needs_approval` on an installed PWA; webhook (ntfy/Telegram) fallback | a blocked run notifies without the app open |
 | MO-8 | P2 | M2 | Terminal input disables autocapitalize, autocorrect and spellcheck; clipboard requires a secure context | no auto-capitalised commands |
 | MO-9 | P3 | M3 | Hardware-keyboard shortcuts on iPad/DeX where the browser allows; reserved browser keys are not promised | documented key map |

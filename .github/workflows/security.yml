@@ -30,18 +30,18 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;36.0.0" \
-            "system-images;android-34;google_apis;x86_64"
+            "system-images;android-36;google_apis;x86_64"
       - name: compile and lint the production client
         run: ./android/gradlew -p android --no-daemon lintDebug assembleDebug assembleDebugAndroidTest
       - name: resolved Android runtime advisories
         run: python3 test/security/dependencies.py --android-runtime android/app/build/reports/security-runtime-dependencies.json
-      - name: actual pairing UI and saved pin retention
+      - name: actual pairing UI, saved pins, and window insets
         env:
           ANDROID_AVD_HOME: ${{ runner.temp }}/security-avds
         run: |
           mkdir -p "$ANDROID_AVD_HOME"
           sudo chown "$(id -u):$(id -g)" /dev/kvm
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name security --package 'system-images;android-34;google_apis;x86_64' --device pixel_5
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name security --package 'system-images;android-36;google_apis;x86_64' --device pixel_5
           "$ANDROID_HOME/emulator/emulator" -avd security -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/security-emulator.log" 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT

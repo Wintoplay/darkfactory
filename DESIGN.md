@@ -608,6 +608,13 @@ the current build (MO-10): the daemon's attention feed drives `notify-send` on
 the desktop and an Android foreground service. Web Push for a PWA and an
 optional webhook are not implemented (MO-7).
 
+On Android API 30+, the native activity root reserves space for system bars,
+display cutouts and the visible keyboard. It forwards zeroes for those inset
+types to its children so WebView does not apply the spacing again. The root
+stays in place across pairing, host selection and the connected page. API
+26–29 keeps the platform's fitted window and `adjustResize` behavior. This
+supports enforced edge-to-edge layout with `targetSdk 36` (MO-4, MO-6).
+
 The PTYs live on the session host, which is what makes mobile work: neither the
 browser nor the daemon has to stay alive. iOS suspends JavaScript and kills
 sockets on background, so reconnect is the primary feature, not an error path.

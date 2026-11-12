@@ -7,6 +7,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Insets
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.net.http.SslError
@@ -16,6 +17,7 @@ import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
@@ -57,6 +59,23 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         tokenStore = TokenStore(this)
         root = FrameLayout(this).apply { setBackgroundColor(BACKGROUND) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            @Suppress("DEPRECATION")
+            window.setDecorFitsSystemWindows(false)
+            val safeTypes = WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+            val handledTypes = safeTypes or WindowInsets.Type.ime()
+            root.setOnApplyWindowInsetsListener { view, insets ->
+                val safe = insets.getInsets(handledTypes)
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+                // The native container owns spacing, including keyboard resize.
+                // Forward zeroes so WebView cannot apply those insets twice.
+                WindowInsets.Builder(insets)
+                    .setInsets(handledTypes, Insets.NONE)
+                    .setInsetsIgnoringVisibility(safeTypes, Insets.NONE)
+                    .setDisplayCutout(null)
+                    .build()
+            }
+        }
         setContentView(root)
         // targetSdk 35+ sends back gestures to the predictive back dispatcher,
         // not to onBackPressed. Register the same handler for API 33+.

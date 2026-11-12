@@ -29,3 +29,23 @@ Run from the repository root:
 sh test/android/check-pq.sh
 sh test/android/check-e2ee-live.sh
 ```
+
+## Android window insets
+
+Use a disposable API 36 emulator for `WindowInsetsTest`. It clears the saved
+host registry. Never run it against a daily-use install or a physical phone.
+The CI security job uses API 36 and runs this class with the other
+instrumentation tests.
+
+```sh
+./android/gradlew -p android lintDebug assembleDebug assembleDebugAndroidTest
+ANDROID_SERIAL=emulator-5580 ./android/gradlew -p android connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=dev.darkfactory.mobile.WindowInsetsTest
+```
+
+The tests check real system-bar bounds on the pairing screen and a WebView in
+the shared native root. Injected insets check portrait and landscape cutouts,
+keyboard show/hide, repeat delivery, and zeroed insets reaching WebView.
+Also inspect the paired Fleet screen with gesture and three-button navigation,
+rotate it, and open and dismiss a real keyboard. Synthetic insets alone do not
+prove those interactions or Samsung-specific behavior.

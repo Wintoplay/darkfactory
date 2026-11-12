@@ -67,8 +67,8 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   project and Actions; alerts and security updates are on. The gates and the
   manual items it cannot see (wrapper, AGP, SDK, JDK) are in
   [dependency-policy.md](dependency-policy.md).
-- Go 1.27+ (`go.mod` `1.27.3`, the smallest release with every stdlib
-  advisory fixed). Never downgrade the `go` directive.
+- Go 1.27.4+ is the release baseline, including the HTTP/1 header-race fix
+  for GO-2026-6859. Never downgrade the `go` directive.
 
 ## Where things are
 
@@ -156,6 +156,9 @@ The root `AGENTS.md` owns the model policy and project-wide instructions.
   Keystore, and serves the page from a loopback origin. Its proxy attaches the
   bearer token upstream; the page has no token, cookie, or JavaScript bridge.
   Transport is TLS/Tailscale, with pinned host identity and app-layer encryption.
+  On API 30+, the native root applies system-bar, display-cutout and keyboard
+  insets to all screens, then zeroes the handled insets before WebView receives
+  them. Keep this single spacing owner when changing the window or WebView.
   Real-phone acceptance and protocol review remain open. See
   `docs/native-client.md` and `android/README.md`.
 - Token: 32 random bytes hex, file `0600`, directories `0700`, constant-time
