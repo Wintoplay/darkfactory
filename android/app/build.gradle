@@ -115,7 +115,7 @@ android {
 // Built-in Kotlin sets the Kotlin jvmTarget from targetCompatibility, so the
 // Java options above are the single bytecode target.
 dependencies {
-    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.87'
     // AGP 9 removed the android.sdkDirectory property; ask the SDK components
     // provider instead. The platform test jars are still shipped in SDK 36.
     def testJars = androidComponents.sdkComponents.sdkDirectory.map { sdkDir ->
